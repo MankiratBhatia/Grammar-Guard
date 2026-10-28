@@ -17,7 +17,8 @@ restriction to the top-N is an approximation (the tail is never sampled).
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+import math
+from collections.abc import Callable, Iterator
 from functools import lru_cache
 from typing import NamedTuple
 
@@ -25,25 +26,57 @@ import torch
 
 from grammarguard.core.pda import JSON_PDA, PDA, Stack, format_stack
 from grammarguard.decoding.generate import _pick, _prompt_ids, load_model
-from grammarguard.decoding.token_index import vocab_strings
+from grammarguard.decoding.token_index import VocabTrie, vocab_trie
 
 
 class PDAStep(NamedTuple):
     """One generated token with the PDA stack AFTER it (top first), how many
-    tokens were valid among those checked, how many were checked, and whether
-    the full-vocabulary fallback was needed."""
+    tokens were valid among those checked, how many were checked, whether the
+    full-vocabulary fallback was needed, and telemetry.
+
+    `mass_kept` is the model probability of the valid tokens that were checked.
+    After a top-N check it is a LOWER bound on the true mass (valid tokens
+    outside the top N are not counted); after a fallback it is exact.
+    """
 
     token_text: str
     stack: tuple[str, ...]
     num_valid: int
     num_checked: int
     fallback: bool
+    mass_kept: float = 1.0
+    preferred_legal: bool = True
+    p_chosen: float = 0.0
 
 
 @lru_cache(maxsize=2)
-def _vocab(model_name: str) -> list[str | None]:
-    """Exact text of every token id (computed once per model)."""
-    return vocab_strings(load_model(model_name)[0])
+def _vocab(model_name: str) -> tuple[list[str | None], VocabTrie]:
+    """(token texts, trie) for a model's tokenizer (computed once per model)."""
+    return vocab_trie(load_model(model_name)[0])
+
+
+def valid_tokens(pda: PDA, stack: Stack, trie: VocabTrie) -> dict[int, Stack]:
+    """All tokens the PDA accepts from `stack`, found by walking the vocabulary trie.
+
+    Same idea as the DFA token index, with the stack carried along: each trie
+    edge is one PDA move; when the PDA rejects a character the whole subtree
+    below it is pruned (no token with that prefix can be valid). Returns
+    {token id: stack after the token}. This is the fallback when none of the
+    top-N tokens is valid, and it replaces a scan that ran the PDA over all
+    50 257 token strings separately.
+    """
+    found: dict[int, Stack] = {}
+    work: list[tuple[int, Stack]] = [(0, stack)]
+    while work:
+        node, st = work.pop()
+        for ch, child in trie.children[node].items():
+            nxt = pda.step(st, ch)
+            if nxt is None:
+                continue
+            for tid in trie.tokens_at[child]:
+                found[tid] = nxt
+            work.append((child, nxt))
+    return found
 
 
 def generate_json(
@@ -56,15 +89,22 @@ def generate_json(
     temperature: float = 1.0,
     seed: int = 0,
     top_n: int = 100,
+    should_stop: Callable[[], bool] | None = None,
 ) -> Iterator[PDAStep]:
-    """Generate text accepted by `pda`. Returns the stop reason: eos | dead_end | max_tokens."""
+    """Generate text accepted by `pda` (the JSON subset, or any schema compiled with
+    PDA(schema_to_grammar(schema))).
+
+    Returns the stop reason: eos | dead_end | max_tokens | cancelled.
+    """
     tokenizer, model = load_model(model_name)
-    strings = _vocab(model_name)
+    strings, trie = _vocab(model_name)
     eos = tokenizer.eos_token_id
     rng = torch.Generator().manual_seed(seed)
     ids, past, stack = _prompt_ids(tokenizer, prompt), None, pda.initial()
     with torch.no_grad():
         for _ in range(max_tokens):
+            if should_stop is not None and should_stop():
+                return "cancelled"
             out = model(input_ids=ids, past_key_values=past, use_cache=True)
             past, logits = out.past_key_values, out.logits[0, -1]
             can_end = pda.accepts_end(stack)
@@ -79,15 +119,29 @@ def generate_json(
             ok, checked, fallback = [t for t in candidates if valid(t)], len(candidates), False
             if not ok:
                 fallback, checked = True, len(strings)
-                ok = [t for t in range(len(strings)) if valid(t)]
+                ok = sorted(valid_tokens(pda, stack, trie))
+                if can_end:
+                    ok.append(eos)
             if not ok:
                 return "dead_end"
             masked = torch.full_like(logits, float("-inf"))
             masked[ok] = logits[ok]
             tid = _pick(masked, top_k, temperature, rng)
+            logp = torch.log_softmax(logits.double(), dim=-1)
+            mass = float(torch.exp(torch.logsumexp(logp[ok], dim=0)))
+            preferred_legal = int(torch.argmax(logits)) in set(ok)
             if tid == eos:
                 return "eos"
             stack = pda.run(stack, strings[tid])
-            yield PDAStep(strings[tid], format_stack(stack), len(ok), checked, fallback)
+            yield PDAStep(
+                strings[tid],
+                format_stack(stack),
+                len(ok),
+                checked,
+                fallback,
+                mass_kept=mass,
+                preferred_legal=preferred_legal,
+                p_chosen=math.exp(float(logp[tid])),
+            )
             ids = torch.tensor([[tid]])
     return "max_tokens"

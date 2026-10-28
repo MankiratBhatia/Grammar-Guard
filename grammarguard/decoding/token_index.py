@@ -70,15 +70,24 @@ class TokenIndex:
     allowed: dict[int, list[int]]
     next_state: dict[int, dict[int, int]]
 
+    def allowed_for(self, q: int) -> list[int]:
+        """Token ids legal in state q (empty for non-live states)."""
+        return self.allowed.get(q, [])
+
+    def next_for(self, q: int, tid: int) -> int:
+        """delta*(q, text(tid)) for a token that is allowed in q."""
+        return self.next_state[q][tid]
+
     def num_allowed(self, q: int) -> int:
         """How many vocabulary tokens are legal in state q (0 for non-live states)."""
-        return len(self.allowed.get(q, ()))
+        return len(self.allowed_for(q))
 
 
-def build_index(dfa: DFA, strings: list[str | None]) -> TokenIndex:
-    """For each live state q and token t: run the DFA over t; keep t if it ends live.
+def build_index_loop(dfa: DFA, strings: list[str | None]) -> TokenIndex:
+    """Reference implementation: for each live state q and token t, run the DFA over t.
 
-    Cost: |live states| x |vocab| x |token length|, paid once and then cached.
+    Cost: |live states| x |vocab| x |token length|. Kept as the obviously-correct
+    version that the trie index is tested against.
     """
     live = dfa.live_states()
     allowed: dict[int, list[int]] = {}
@@ -96,6 +105,131 @@ def build_index(dfa: DFA, strings: list[str | None]) -> TokenIndex:
     return TokenIndex(allowed, next_state)
 
 
+class VocabTrie:
+    """A character trie of the vocabulary: every token is a path from the root.
+
+    children[n] maps a character to the child node; tokens_at[n] lists the token
+    ids whose text ends exactly at node n. Tokens that share a prefix ("20",
+    "201", "2019") share the path, so a walk reads each shared prefix once.
+    """
+
+    def __init__(self, strings: list[str | None]):
+        """Insert every non-empty token text."""
+        self.children: list[dict[str, int]] = [{}]
+        self.tokens_at: list[list[int]] = [[]]
+        for tid, text in enumerate(strings):
+            if not text:
+                continue
+            node = 0
+            for ch in text:
+                nxt = self.children[node].get(ch)
+                if nxt is None:
+                    nxt = len(self.children)
+                    self.children[node][ch] = nxt
+                    self.children.append({})
+                    self.tokens_at.append([])
+                node = nxt
+            self.tokens_at[node].append(tid)
+
+    def __len__(self) -> int:
+        """Number of trie nodes."""
+        return len(self.children)
+
+
+def _walk(dfa: DFA, trie: VocabTrie, live: frozenset[int], q: int) -> dict[int, int]:
+    """Allowed tokens of ONE state: {token id: next state}, by a pruned DFS over trie x DFA.
+
+    Reading a character moves both the trie node and the DFA state; if the DFA
+    state is not live the whole subtree below is pruned, since a non-live state
+    can only lead to non-live states -- every token in that subtree would be
+    rejected. Tokens ending at a visited node are allowed.
+    """
+    found: dict[int, int] = {}
+    stack = [(0, q)]
+    while stack:
+        node, state = stack.pop()
+        for ch, child in trie.children[node].items():
+            r = dfa.step(state, ch)
+            if r not in live:
+                continue  # prune the whole subtree
+            for tid in trie.tokens_at[child]:
+                found[tid] = r
+            stack.append((child, r))
+    return found
+
+
+def build_index_trie(dfa: DFA, trie: VocabTrie) -> TokenIndex:
+    """Eager index: walk the trie once for every live state.
+
+    Same output as build_index_loop; much less work when the language is
+    restrictive, because most of the trie is pruned after one or two characters.
+    """
+    live = dfa.live_states()
+    allowed: dict[int, list[int]] = {}
+    next_state: dict[int, dict[int, int]] = {}
+    for q in sorted(live):
+        found = _walk(dfa, trie, live, q)
+        allowed[q] = sorted(found)
+        next_state[q] = found
+    return TokenIndex(allowed, next_state)
+
+
+class LazyTokenIndex:
+    """Token index that fills in a state's row the first time generation reaches it.
+
+    Generation visits only a handful of the DFA's states (one per token), while
+    a policy such as `email & !contains(..) & length(5,40)` has over a thousand.
+    Walking the trie for all of them took ~19 s; for the few visited it takes
+    milliseconds. Rows are memoised, so each state costs one walk at most.
+    """
+
+    def __init__(self, dfa: DFA, trie: VocabTrie):
+        """Remember the automaton and the vocabulary trie; compute nothing yet."""
+        self.dfa, self.trie, self.live = dfa, trie, dfa.live_states()
+        self._rows: dict[int, tuple[list[int], dict[int, int]]] = {}
+
+    def _row(self, q: int) -> tuple[list[int], dict[int, int]]:
+        """(sorted allowed ids, next-state map) for q, computed on first use."""
+        if q not in self._rows:
+            found = _walk(self.dfa, self.trie, self.live, q) if q in self.live else {}
+            self._rows[q] = (sorted(found), found)
+        return self._rows[q]
+
+    def allowed_for(self, q: int) -> list[int]:
+        """Token ids legal in state q."""
+        return self._row(q)[0]
+
+    def next_for(self, q: int, tid: int) -> int:
+        """delta*(q, text(tid))."""
+        return self._row(q)[1][tid]
+
+    def num_allowed(self, q: int) -> int:
+        """How many tokens are legal in q."""
+        return len(self.allowed_for(q))
+
+    @property
+    def rows_computed(self) -> int:
+        """How many states have been expanded so far (for diagnostics)."""
+        return len(self._rows)
+
+
+_TRIES: dict[str, tuple[list[str | None], VocabTrie]] = {}
+
+
+def vocab_trie(tokenizer) -> tuple[list[str | None], VocabTrie]:
+    """(token texts, trie) for a tokenizer, built once per process."""
+    key = getattr(tokenizer, "name_or_path", "") or str(id(tokenizer))
+    if key not in _TRIES:
+        strings = vocab_strings(tokenizer)
+        _TRIES[key] = (strings, VocabTrie(strings))
+    return _TRIES[key]
+
+
+def build_index(dfa: DFA, strings: list[str | None], trie: VocabTrie | None = None) -> TokenIndex:
+    """Token index for a DFA (trie-based; builds the trie from `strings` if none is given)."""
+    return build_index_trie(dfa, trie or VocabTrie(strings))
+
+
 def cache_key(dfa: DFA, model_name: str) -> str:
     """Hash of the minimized DFA's canonical table + tokenizer name.
 
@@ -104,8 +238,20 @@ def cache_key(dfa: DFA, model_name: str) -> str:
     return hashlib.sha256((model_name + "\n" + dfa.signature()).encode()).hexdigest()[:24]
 
 
-def load_or_build_index(dfa: DFA, tokenizer, model_name: str = "gpt2", cache_dir: Path | None = None) -> TokenIndex:
-    """Return the token index, reading it from disk if this DFA was indexed before."""
+EAGER_LIMIT = 64  # DFAs with more live states than this get a lazy, in-memory index
+
+
+def load_or_build_index(
+    dfa: DFA, tokenizer, model_name: str = "gpt2", cache_dir: Path | None = None
+) -> TokenIndex | LazyTokenIndex:
+    """Return the token index for a DFA.
+
+    Small DFAs (<= EAGER_LIMIT live states): full index, read from / written to
+    the disk cache. Large ones: a LazyTokenIndex (rows computed on demand).
+    """
+    strings, trie = vocab_trie(tokenizer)
+    if len(dfa.live_states()) > EAGER_LIMIT:
+        return LazyTokenIndex(dfa, trie)
     cache_dir = cache_dir or CACHE_DIR
     path = cache_dir / f"token_index_{cache_key(dfa, model_name)}.json"
     if path.exists():
@@ -113,7 +259,7 @@ def load_or_build_index(dfa: DFA, tokenizer, model_name: str = "gpt2", cache_dir
         allowed = {int(q): ids for q, ids in raw["allowed"].items()}
         nxt = {int(q): dict(zip(allowed[int(q)], states, strict=True)) for q, states in raw["next"].items()}
         return TokenIndex(allowed, nxt)
-    index = build_index(dfa, vocab_strings(tokenizer))
+    index = build_index_trie(dfa, trie)
     cache_dir.mkdir(parents=True, exist_ok=True)
     raw = {
         "allowed": index.allowed,

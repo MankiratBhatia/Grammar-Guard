@@ -137,3 +137,46 @@ Ambiguities in the spec and the (simplest) choice taken for each.
    string, non-negative integer, boolean, null and enum (compiled to a trie so it stays LL(1)).
    Building the array rule exposed a genuine LL(1) conflict (`[` `]` vs `[` item…), fixed by
    left-factoring; `schema_to_grammar` always runs `parse_table()` so a conflict can never slip through.
+
+## 2.0 Phase C — decoding engine
+
+1. **Trie index, measured** (GPT-2 vocab: 49 912 tokens → 97 317 trie nodes, built once in 0.33 s).
+   Output is identical to the per-token reference loop (`build_index_loop`, kept as the oracle) on every
+   constraint tested, but the speed-up depends on how restrictive the constraint is:
+
+   | constraint | live states | loop | trie | speed-up |
+   |---|---|---|---|---|
+   | ISO date | 11 | 0.48 s | 0.00 s | 114× |
+   | integer | 4 | 0.15 s | 0.00 s | 37× |
+   | email | 10 | 0.48 s | 0.08 s | 5.8× |
+   | username | 17 | 0.70 s | 0.18 s | 3.8× |
+   | `!contains(/spam/)` | 4 | 0.17 s | 0.29 s | **0.6× (slower)** |
+   | email & !contains & length | 1265 | 50 s | 18.6 s | 2.7× |
+
+   Pruning only helps when most tokens die early. A complement-style constraint allows almost every token,
+   so nothing is pruned and the trie's bookkeeping makes it slower. We keep the trie as the default anyway
+   (restrictive constraints are the common case) and report the exception rather than hide it.
+2. **Lazy index for big DFAs.** The 1265-state policy took 18.6 s to index eagerly, but generation visits
+   only a few dozen states. DFAs with more than 64 live states get a `LazyTokenIndex` that walks the trie
+   for a state only when generation first reaches it (a 20-token run took 1.3 s in total). Small DFAs keep
+   the eager index and the disk cache. Lazy rows live only in the Engine's memory LRU.
+3. **Constraint pressure.** Per step, with p the raw model distribution and A the allowed set:
+   `mass_kept = p(A)`, `pressure = 1 − p(A)`, `cost_bits = −log2 p(A)`. The cost is exactly
+   KL(q‖p) in bits for q = p restricted to A and renormalised, i.e. the information the constraint adds.
+   Measured: a prompt that already shows dates costs 7.7 bits and 1 override; "My favourite animal is the"
+   costs 63.6 bits and 7 overrides. Computed in log space (`logsumexp`) so tiny masses do not underflow.
+   The EOS decision that ends a run is not included in the totals.
+4. **PDA telemetry is a lower bound.** After a top-100 check, valid tokens outside the top 100 are not
+   known, so `mass_kept` counts only the checked ones (exact after a fallback). `preferred_legal` is
+   always exact because the model's argmax is always among the checked tokens.
+5. **PDA fallback is a trie walk** (`valid_tokens`) instead of running the PDA over every token string.
+   Measured 2–118× faster, but the old scan was already only 20–40 ms, so this is a tidy-up, not a rescue.
+6. **Certificates are stdlib-only** (`core/certificate.py`) and verified without the model: the verifier
+   rebuilds the automaton from the constraint text, checks a SHA-256 fingerprint, and replays the run.
+   "valid" (the certificate is truthful) is deliberately separate from "accepted" (the text is in the
+   language): a certificate can honestly prove that a text is *not* accepted. The DFA fingerprint is the
+   canonical minimal-DFA table, so it is only meaningful for minimal DFAs (the algebra always minimizes).
+7. **Engine**: one lock, so generations run one at a time (CPU GPT-2 is not safe to drive from several
+   threads). `CancelToken` is polled between tokens; closing a half-consumed generator releases the lock.
+8. **Schema mode** needed no new generator: `generate_json(pda=PDA(schema_to_grammar(schema)))`.
+9. **Not done in this phase:** the lazy index is not persisted to disk.
