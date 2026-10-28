@@ -9,21 +9,26 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from core.cfg import EOF, Grammar, GrammarError, Term, char_range, json_grammar, lit
-from core.pda import JSON_PDA, PDA, format_stack
-from decoding.generate import collect
-from decoding.pda_generate import generate_json
+from grammarguard.core.cfg import EOF, Grammar, GrammarError, Term, char_range, json_grammar, lit
+from grammarguard.core.pda import JSON_PDA, PDA, format_stack
+from grammarguard.decoding.generate import collect
+from grammarguard.decoding.pda_generate import generate_json
 
 # ---------------------------------------------------------------- grammar theory
 
 
 def textbook_grammar() -> Grammar:
     """E -> T E'; E' -> + T E' | eps; T -> F T'; T' -> * F T' | eps; F -> ( E ) | id(a)."""
-    return Grammar("E", {
-        "E": [["T", "E1"]], "E1": [[lit("+"), "T", "E1"], []],
-        "T": [["F", "T1"]], "T1": [[lit("*"), "F", "T1"], []],
-        "F": [[lit("("), "E", lit(")")], [lit("a")]],
-    })
+    return Grammar(
+        "E",
+        {
+            "E": [["T", "E1"]],
+            "E1": [[lit("+"), "T", "E1"], []],
+            "T": [["F", "T1"]],
+            "T1": [[lit("*"), "F", "T1"], []],
+            "F": [[lit("("), "E", lit(")")], [lit("a")]],
+        },
+    )
 
 
 def test_first_follow_textbook():
@@ -77,16 +82,36 @@ def test_textbook_pda_accepts_expressions():
 # ---------------------------------------------------------------- PDA vs json
 
 
-@pytest.mark.parametrize("good", ['{}', '[]', '{"a":1}', '[0,10,"x",true,false,null]',
-                                  '{"ab":[1,[2,[]],{"c":{}}],"d":"e"}', '[""]'])
+@pytest.mark.parametrize(
+    "good", ["{}", "[]", '{"a":1}', '[0,10,"x",true,false,null]', '{"ab":[1,[2,[]],{"c":{}}],"d":"e"}', '[""]']
+)
 def test_pda_accepts_valid_json(good):
     """Valid subset documents are accepted (and json agrees)."""
     json.loads(good)
     assert JSON_PDA.accepts(good)
 
 
-@pytest.mark.parametrize("bad", ['', '1', '"a"', '{', '[1,]', '[01]', '{"A":1}', '{"a" :1}', '[1 ]', '{a:1}',
-                                 '[1,2]x', '{"a":-1}', '[1.5]', "['a']", '[true,nul]', '{"a":1,}'])
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "",
+        "1",
+        '"a"',
+        "{",
+        "[1,]",
+        "[01]",
+        '{"A":1}',
+        '{"a" :1}',
+        "[1 ]",
+        "{a:1}",
+        "[1,2]x",
+        '{"a":-1}',
+        "[1.5]",
+        "['a']",
+        "[true,nul]",
+        '{"a":1,}',
+    ],
+)
 def test_pda_rejects_invalid(bad):
     """Invalid or out-of-subset documents are rejected."""
     assert not JSON_PDA.accepts(bad)
@@ -94,8 +119,9 @@ def test_pda_rejects_invalid(bad):
 
 json_values = st.recursive(
     st.one_of(st.integers(0, 10**6), st.booleans(), st.none(), st.text("abcxyz", max_size=5)),
-    lambda inner: st.one_of(st.lists(inner, max_size=4),
-                            st.dictionaries(st.text("abcxyz", max_size=4), inner, max_size=3)),
+    lambda inner: st.one_of(
+        st.lists(inner, max_size=4), st.dictionaries(st.text("abcxyz", max_size=4), inner, max_size=3)
+    ),
     max_leaves=12,
 )
 
@@ -131,6 +157,7 @@ def test_stack_contents():
 FEW_SHOT = '{"name":"alice","age":30}\n{"name":"bob","age":25}\n'
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("opts", [dict(), dict(top_k=10, seed=1), dict(top_k=10, seed=2), dict(top_k=30, seed=3)])
 def test_generated_json_is_accepted(opts):
     """Every output that ends with EOS is a complete document; a cut-off one is a viable prefix."""
@@ -142,6 +169,7 @@ def test_generated_json_is_accepted(opts):
     assert all(s.num_valid >= 1 for s in steps)
 
 
+@pytest.mark.slow
 def test_fallback_to_full_vocab():
     """With top_n=1 the best token is usually invalid, so the full-vocabulary fallback must kick in
     and still produce valid output."""
@@ -151,6 +179,7 @@ def test_fallback_to_full_vocab():
     assert JSON_PDA.is_viable_prefix(text)
 
 
+@pytest.mark.slow
 def test_greedy_top100_equals_greedy_full_vocab():
     """Greedy over the top-100 equals greedy over the full vocabulary (top_n = whole vocab)."""
     a, _, _ = collect(generate_json(FEW_SHOT, max_tokens=40))

@@ -2,9 +2,11 @@
 
 import pytest
 
-from core.dfa import regex_to_dfa
-from decoding.generate import collect, generate_constrained, generate_unconstrained, load_model
-from decoding.token_index import build_index, cache_key, load_or_build_index, vocab_strings
+from grammarguard.core.dfa import regex_to_dfa
+from grammarguard.decoding.generate import collect, generate_constrained, generate_unconstrained, load_model
+from grammarguard.decoding.token_index import build_index, cache_key, load_or_build_index, vocab_strings
+
+pytestmark = pytest.mark.slow
 
 REGEXES = [
     ("[0-9]{4}-[0-9]{2}-[0-9]{2}", "Date: "),
@@ -65,9 +67,7 @@ def test_index_cache_roundtrip(tokenizer, tmp_path):
 def test_constrained_output_is_accepted(regex, prompt, top_k, seed):
     """Every constrained output ends by EOS in an accepting state and is accepted by the DFA."""
     dfa = regex_to_dfa(regex)
-    text, steps, why = collect(
-        generate_constrained(dfa, prompt, max_tokens=40, top_k=top_k, seed=seed)
-    )
+    text, steps, why = collect(generate_constrained(dfa, prompt, max_tokens=40, top_k=top_k, seed=seed))
     assert why == "eos"
     assert dfa.accepts(text), (regex, text)
     assert dfa.run(text) == steps[-1].dfa_state
@@ -93,7 +93,7 @@ def test_dead_end_stops():
     """A language with no non-empty string and a non-accepting start stops immediately as dead_end."""
     dfa = regex_to_dfa("[0-9]{2}")
     # Hand-build an unsatisfiable-by-vocab case: restrict the index to nothing.
-    from decoding.token_index import TokenIndex
+    from grammarguard.decoding.token_index import TokenIndex
 
     empty = TokenIndex({q: [] for q in dfa.live_states()}, {q: {} for q in dfa.live_states()})
     text, steps, why = collect(generate_constrained(dfa, "x", index=empty))

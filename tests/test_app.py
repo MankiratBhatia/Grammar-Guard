@@ -2,12 +2,12 @@
 
 from pathlib import Path
 
+import pytest
 from streamlit.testing.v1 import AppTest
 
-from core.dfa import minimize, regex_to_dfa, subset_construction
-from core.dot import compress_symbols, dfa_to_dot, nfa_to_dot
-from core.nfa import regex_to_nfa
-
+from grammarguard.core.dfa import minimize, subset_construction
+from grammarguard.core.dot import compress_symbols, dfa_to_dot, nfa_to_dot
+from grammarguard.core.nfa import regex_to_nfa
 
 APP = str(Path(__file__).resolve().parent.parent / "app.py")
 
@@ -45,6 +45,7 @@ def test_pipeline_and_equivalence_tabs():
     assert any("Invalid regex" in e.value for e in at.error)
 
 
+@pytest.mark.slow
 def test_generate_tab():
     """Clicking Generate streams both columns and the constrained text matches the regex."""
     at = AppTest.from_file(APP, default_timeout=180).run()
@@ -56,6 +57,7 @@ def test_generate_tab():
     assert "matches regex: **True**" in texts
 
 
+@pytest.mark.slow
 def test_generate_tab_json_mode():
     """JSON mode streams a PDA-constrained output with a stack column; the result is valid in our subset."""
     at = AppTest.from_file(APP, default_timeout=180).run()

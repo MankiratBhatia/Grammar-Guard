@@ -1,8 +1,0 @@
-# Core automata code (core/) uses only the standard library.
-pytest>=8
-hypothesis>=6
-# Phase 2: constrained decoding
-torch
-transformers>=4.40
-# Phase 3: UI
-streamlit>=1.35

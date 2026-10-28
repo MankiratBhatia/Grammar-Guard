@@ -10,9 +10,9 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from core import regex_parser as rp
-from core.dfa import equivalent, minimize, product, regex_to_dfa, shortest_accepted, subset_construction
-from core.nfa import regex_to_nfa
+from grammarguard.core import regex_parser as rp
+from grammarguard.core.dfa import equivalent, minimize, product, regex_to_dfa, shortest_accepted, subset_construction
+from grammarguard.core.nfa import regex_to_nfa
 
 # ~15 realistic patterns (dates, phone numbers, IDs) plus classic textbook ones.
 PATTERNS = [

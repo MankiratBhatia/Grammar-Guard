@@ -4,3 +4,8 @@ __pycache__/
 .pytest_cache/
 .hypothesis/
 .cache/
+node_modules/
+frontend/dist/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/

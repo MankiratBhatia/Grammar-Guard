@@ -17,14 +17,15 @@ restriction to the top-N is an approximation (the tail is never sampled).
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from functools import lru_cache
-from typing import Iterator, NamedTuple
+from typing import NamedTuple
 
 import torch
 
-from core.pda import JSON_PDA, PDA, format_stack
-from decoding.generate import _pick, _prompt_ids, load_model
-from decoding.token_index import vocab_strings
+from grammarguard.core.pda import JSON_PDA, PDA, Stack, format_stack
+from grammarguard.decoding.generate import _pick, _prompt_ids, load_model
+from grammarguard.decoding.token_index import vocab_strings
 
 
 class PDAStep(NamedTuple):
@@ -68,7 +69,7 @@ def generate_json(
             past, logits = out.past_key_values, out.logits[0, -1]
             can_end = pda.accepts_end(stack)
 
-            def valid(t: int) -> bool:
+            def valid(t: int, stack: Stack = stack, can_end: bool = can_end) -> bool:
                 """Is token t a legal continuation from the current stack?"""
                 if t == eos:
                     return can_end

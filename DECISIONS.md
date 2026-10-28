@@ -95,3 +95,14 @@ Ambiguities in the spec and the (simplest) choice taken for each.
 8. **Stop reasons** as in Phase 2. `max_tokens` leaves a viable prefix; EOS is
    forced exactly when the stack is empty and nothing else is legal.
 9. `json` (stdlib) is used only in tests, as an oracle, like `re` in Phase 1.
+
+## 2.0 Phase A — restructure
+
+1. Code lives in the `grammarguard/` package (`core`, `decoding`, later `api`, `eval`);
+   `pyproject.toml` replaces `requirements.txt`, with extras `ml`, `api`, `ui`, `dev`.
+   `grammarguard.core` still has **no** dependencies.
+2. Token-index cache moved to `~/.cache/grammarguard` (override with
+   `GRAMMARGUARD_CACHE_DIR`), since the package directory may be read-only once installed.
+3. Tests that load GPT-2 are marked `slow`; `make test-fast` / CI run `-m "not slow"`.
+4. `mypy` is enforced on `grammarguard.core` only (the theory code); the ML glue is
+   checked by ruff.

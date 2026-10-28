@@ -25,7 +25,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from core import regex_parser as rp
+from grammarguard.core import regex_parser as rp
 
 
 @dataclass

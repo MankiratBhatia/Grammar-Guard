@@ -1,13 +1,13 @@
 """Command line: compare unconstrained vs DFA-constrained generation.
 
-    python cli.py --regex "[0-9]{4}-[0-9]{2}-[0-9]{2}" --prompt "Date: "
+python cli.py --regex "[0-9]{4}-[0-9]{2}-[0-9]{2}" --prompt "Date: "
 """
 
 import argparse
 import time
 
-from core.dfa import regex_to_dfa
-from decoding.generate import collect, generate_constrained, generate_unconstrained
+from grammarguard.core.dfa import regex_to_dfa
+from grammarguard.decoding.generate import collect, generate_constrained, generate_unconstrained
 
 
 def main() -> None:

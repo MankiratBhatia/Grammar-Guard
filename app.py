@@ -2,10 +2,10 @@
 
 import streamlit as st
 
-from core.dfa import equivalent, minimize, regex_to_dfa, subset_construction
-from core.dot import dfa_to_dot, nfa_to_dot
-from core.nfa import regex_to_nfa
-from core.regex_parser import RegexSyntaxError, parse, to_string
+from grammarguard.core.dfa import equivalent, minimize, regex_to_dfa, subset_construction
+from grammarguard.core.dot import dfa_to_dot, nfa_to_dot
+from grammarguard.core.nfa import regex_to_nfa
+from grammarguard.core.regex_parser import RegexSyntaxError, parse, to_string
 
 st.set_page_config(page_title="GrammarGuard", layout="wide")
 st.title("GrammarGuard")
@@ -23,15 +23,14 @@ def build_or_error(regex: str):
         return None
 
 
-JSON_PROMPT = ('{"name":"alice","age":30,"tags":["a","b"]}\n'
-               '{"name":"bob","age":25,"tags":["c"]}\n')
+JSON_PROMPT = '{"name":"alice","age":30,"tags":["a","b"]}\n{"name":"bob","age":25,"tags":["c"]}\n'
 
 
 def run_json_generation(prompt: str, max_tokens: int, top_k: int, seed: int) -> None:
     """Stream unconstrained vs PDA-constrained JSON side by side, showing the PDA stack per step."""
-    from core.pda import JSON_PDA
-    from decoding.generate import generate_unconstrained
-    from decoding.pda_generate import generate_json
+    from grammarguard.core.pda import JSON_PDA
+    from grammarguard.decoding.generate import generate_unconstrained
+    from grammarguard.decoding.pda_generate import generate_json
 
     opts = dict(max_tokens=max_tokens, top_k=top_k if top_k > 1 else None, seed=seed)
     left, right = st.columns(2)
@@ -57,20 +56,28 @@ def run_json_generation(prompt: str, max_tokens: int, top_k: int, seed: int) -> 
             reason = stop.value
             break
         text += step.token_text
-        rows.append({"token": repr(step.token_text), "stack (top first)": " ".join(step.stack) or "(empty)",
-                     "valid / checked": f"{step.num_valid} / {step.num_checked}",
-                     "full-vocab fallback": step.fallback})
+        rows.append(
+            {
+                "token": repr(step.token_text),
+                "stack (top first)": " ".join(step.stack) or "(empty)",
+                "valid / checked": f"{step.num_valid} / {step.num_checked}",
+                "full-vocab fallback": step.fallback,
+            }
+        )
         rt.code(text, language=None)
-        rstat.write(f"stack: `{' '.join(step.stack) or '(empty)'}` · valid tokens: **{step.num_valid}** "
-                    f"of {step.num_checked} checked")
+        rstat.write(
+            f"stack: `{' '.join(step.stack) or '(empty)'}` · valid tokens: **{step.num_valid}** "
+            f"of {step.num_checked} checked"
+        )
         rtable.dataframe(rows, use_container_width=True)
     rstat.write(f"stopped: {reason} · valid JSON in our subset: **{JSON_PDA.accepts(text)}**")
 
 
 # ------------------------------------------------------------------ tab 1
 with tab_pipeline:
-    regex = st.text_input("Regex", "(a|b)*abb", key="pipe_regex",
-                          help="Supports | * + ? ( ) [a-z] {n} {n,m}; escape specials with \\")
+    regex = st.text_input(
+        "Regex", "(a|b)*abb", key="pipe_regex", help="Supports | * + ? ( ) [a-z] {n} {n,m}; escape specials with \\"
+    )
     try:
         ast = parse(regex)
         nfa = regex_to_nfa(regex)
@@ -84,8 +91,10 @@ with tab_pipeline:
         c1.metric("ε-NFA states", len(nfa.states))
         c2.metric("DFA states (subset construction)", dfa.num_states())
         c3.metric("Minimal DFA states", mdfa.num_states())
-        st.caption("DFA counts include the dead state ∅, which is hidden in the drawings: "
-                   "every missing edge goes to it. Dashed nodes are non-live.")
+        st.caption(
+            "DFA counts include the dead state ∅, which is hidden in the drawings: "
+            "every missing edge goes to it. Dashed nodes are non-live."
+        )
         st.subheader("ε-NFA (Thompson)")
         st.graphviz_chart(nfa_to_dot(nfa), use_container_width=True)
         st.subheader("DFA (subset construction; nodes show the NFA state sets)")
@@ -100,8 +109,12 @@ with tab_generate:
     gc1, gc2 = st.columns([2, 1])
     mode = gc1.radio("Constraint", ["Regex (DFA)", "JSON (PDA)"], horizontal=True, key="gen_mode")
     is_json = mode.startswith("JSON")
-    prompt = gc1.text_area("Prompt", JSON_PROMPT if is_json else "Date: ", key="gen_prompt_json" if is_json else "gen_prompt",
-                           height=100 if is_json else 68)
+    prompt = gc1.text_area(
+        "Prompt",
+        JSON_PROMPT if is_json else "Date: ",
+        key="gen_prompt_json" if is_json else "gen_prompt",
+        height=100 if is_json else 68,
+    )
     gen_regex = "" if is_json else gc1.text_input("Regex", "[0-9]{4}-[0-9]{2}-[0-9]{2}", key="gen_regex")
     max_tokens = gc2.slider("Max tokens", 5, 60, 30)
     top_k = gc2.slider("Top-k (1 = greedy)", 1, 50, 1)
@@ -111,7 +124,7 @@ with tab_generate:
         if is_json:
             run_json_generation(prompt, max_tokens, top_k, int(seed))
         elif gdfa is not None:
-            from decoding.generate import generate_constrained, generate_unconstrained
+            from grammarguard.decoding.generate import generate_constrained, generate_unconstrained
 
             opts = dict(max_tokens=max_tokens, top_k=top_k if top_k > 1 else None, seed=int(seed))
             left, right = st.columns(2)
@@ -139,8 +152,14 @@ with tab_generate:
             while first is not None:
                 step = first
                 text += step.token_text
-                rows.append({"token": repr(step.token_text), "DFA state": step.dfa_state,
-                             "allowed tokens": step.num_allowed, "accepting": step.dfa_state in gdfa.accept})
+                rows.append(
+                    {
+                        "token": repr(step.token_text),
+                        "DFA state": step.dfa_state,
+                        "allowed tokens": step.num_allowed,
+                        "accepting": step.dfa_state in gdfa.accept,
+                    }
+                )
                 rt.code(text, language=None)
                 rstat.write(f"state **q{step.dfa_state}** · allowed tokens: **{step.num_allowed}**")
                 rtable.dataframe(rows, use_container_width=True)

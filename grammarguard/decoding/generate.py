@@ -15,13 +15,14 @@ an accepting state) the output is exactly a string of L(M).
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from functools import lru_cache
-from typing import Iterator, NamedTuple
+from typing import NamedTuple
 
 import torch
 
-from core.dfa import DFA
-from decoding.token_index import TokenIndex, load_or_build_index
+from grammarguard.core.dfa import DFA
+from grammarguard.decoding.token_index import TokenIndex, load_or_build_index
 
 
 class Step(NamedTuple):

@@ -28,7 +28,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 
-from core.nfa import NFA, regex_to_nfa
+from grammarguard.core.nfa import NFA, regex_to_nfa
 
 
 @dataclass
@@ -290,8 +290,8 @@ def shortest_accepted(dfa: DFA) -> str | None:
         q = queue.popleft()
         if q in dfa.accept:
             chars = []
-            while parent[q] is not None:
-                q, a = parent[q]
+            while (link := parent[q]) is not None:
+                q, a = link
                 chars.append(a)
             return "".join(reversed(chars))
         for a in sorted(dfa.alphabet):

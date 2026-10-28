@@ -97,7 +97,7 @@ class Grammar:
 
     def _compute_first(self) -> dict[str, set[str]]:
         """FIRST(A) for every nonterminal, by fixed-point iteration over productions."""
-        first = {a: set() for a in self.productions}
+        first: dict[str, set[str]] = {a: set() for a in self.productions}
         changed = True
         while changed:
             changed = False
@@ -114,7 +114,7 @@ class Grammar:
 
         EOF is in FOLLOW(start). For a production B -> x A y: FOLLOW(A) gets
         FIRST(y); and if y is nullable, FOLLOW(A) also gets FOLLOW(B)."""
-        follow = {a: set() for a in self.productions}
+        follow: dict[str, set[str]] = {a: set() for a in self.productions}
         follow[self.start].add(EOF)
         changed = True
         while changed:

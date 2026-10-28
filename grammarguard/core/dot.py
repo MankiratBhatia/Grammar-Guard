@@ -7,8 +7,8 @@ state is marked by an arrow coming from an invisible node.
 
 from __future__ import annotations
 
-from core.dfa import DFA
-from core.nfa import NFA
+from grammarguard.core.dfa import DFA
+from grammarguard.core.nfa import NFA
 
 
 def _esc(text: str) -> str:
@@ -43,7 +43,7 @@ def compress_symbols(symbols) -> str:
 
 def nfa_to_dot(nfa: NFA) -> str:
     """DOT for an epsilon-NFA; epsilon edges are labelled ε."""
-    lines = ["digraph NFA {", "  rankdir=LR;", '  node [shape=circle, fontsize=11];', '  __start [shape=point];']
+    lines = ["digraph NFA {", "  rankdir=LR;", "  node [shape=circle, fontsize=11];", "  __start [shape=point];"]
     for q in sorted(nfa.states):
         shape = "doublecircle" if q in nfa.accept else "circle"
         lines.append(f'  q{q} [label="{q}", shape={shape}];')
@@ -75,7 +75,7 @@ def dfa_to_dot(dfa: DFA, show_dead: bool = False, highlight: int | None = None, 
             continue
         shape = "doublecircle" if q in dfa.accept else "circle"
         label = dfa.labels.get(q, str(q)) if use_labels else str(q)
-        style = ', style=filled, fillcolor="#ffd966"' if q == highlight else ("" if q in live else ', style=dashed')
+        style = ', style=filled, fillcolor="#ffd966"' if q == highlight else ("" if q in live else ", style=dashed")
         lines.append(f'  q{q} [label="{_esc(label)}", shape={shape}{style}];')
     lines.append(f"  __start -> q{dfa.start};")
     grouped: dict[tuple[int, int], set[str]] = {}

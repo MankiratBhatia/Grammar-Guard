@@ -28,6 +28,7 @@ Grammar used by the recursive-descent parser (lowest precedence first):
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 # --------------------------------------------------------------------------
 # AST node types
@@ -57,23 +58,23 @@ class CharClass:
 class Concat:
     """Concatenation L(left) . L(right)."""
 
-    left: "Node"
-    right: "Node"
+    left: Node
+    right: Node
 
 
 @dataclass(frozen=True)
 class Union:
     """Union L(left) U L(right)."""
 
-    left: "Node"
-    right: "Node"
+    left: Node
+    right: Node
 
 
 @dataclass(frozen=True)
 class Star:
     """Kleene star L(child)*: zero or more concatenated copies."""
 
-    child: "Node"
+    child: Node
 
 
 Node = Epsilon | Literal | CharClass | Concat | Union | Star
@@ -101,7 +102,7 @@ class Token:
     `value` holds the char (CHAR), frozenset (CLASS) or (n, m|None) (REPEAT)."""
 
     kind: str
-    value: object = None
+    value: Any = None
     pos: int = 0
 
 
@@ -154,6 +155,7 @@ def _parse_braces(text: str, i: int) -> tuple[tuple[int, int | None], int]:
     if close == -1:
         raise RegexSyntaxError(f"unterminated {{ at pos {start}")
     body = text[i:close]
+    m: int | None
     parts = body.split(",")
     try:
         if len(parts) == 1:
@@ -335,7 +337,7 @@ def parse(text: str) -> Node:
     tokens = tokenize(text)
     if tokens and tokens[0].kind in ("STAR", "PLUS", "QMARK", "REPEAT"):
         raise RegexSyntaxError("regex cannot start with a repetition operator")
-    for prev, cur in zip(tokens, tokens[1:]):
+    for prev, cur in zip(tokens, tokens[1:], strict=False):
         if cur.kind in ("STAR", "PLUS", "QMARK", "REPEAT") and prev.kind in ("LPAREN", "UNION"):
             raise RegexSyntaxError(f"nothing to repeat at pos {cur.pos}")
     return Parser(tokens).parse()

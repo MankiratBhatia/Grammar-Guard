@@ -19,7 +19,7 @@ a candidate token on a stack without disturbing it.
 
 from __future__ import annotations
 
-from core.cfg import EOF, Grammar, Symbol, Term, json_grammar
+from grammarguard.core.cfg import EOF, Grammar, Symbol, Term, json_grammar
 
 Stack = tuple[Symbol, ...]
 
@@ -39,37 +39,41 @@ class PDA:
     def step(self, stack: Stack, c: str) -> Stack | None:
         """Consume one character: expand nonterminals on top (using c as look-ahead),
         then match the terminal underneath. Returns the new stack, or None = reject."""
-        stack = list(stack)
-        while stack and isinstance(stack[-1], str):
-            rhs = self.table.get((stack.pop(), c))
+        work: list[Symbol] = list(stack)
+        while work and isinstance(work[-1], str):
+            nonterminal = work.pop()
+            assert isinstance(nonterminal, str)
+            rhs = self.table.get((nonterminal, c))
             if rhs is None:
                 return None
-            stack.extend(reversed(rhs))
-        if not stack:  # input left over but nothing left to match
+            work.extend(reversed(rhs))
+        if not work:  # input left over but nothing left to match
             return None
-        top = stack.pop()
-        return tuple(stack) if c in top.chars else None
+        top = work.pop()
+        assert isinstance(top, Term)
+        return tuple(work) if c in top.chars else None
 
     def run(self, stack: Stack, text: str) -> Stack | None:
         """Extended transition: feed a whole string; None as soon as it is rejected."""
         for c in text:
-            stack = self.step(stack, c)
-            if stack is None:
+            nxt = self.step(stack, c)
+            if nxt is None:
                 return None
+            stack = nxt
         return stack
 
     def accepts_end(self, stack: Stack) -> bool:
         """May the input end here? Only epsilon-expansions (look-ahead EOF) may
         remain, and they must empty the stack."""
-        stack = list(stack)
-        while stack:
-            top = stack.pop()
+        work: list[Symbol] = list(stack)
+        while work:
+            top = work.pop()
             if isinstance(top, Term):
                 return False
             rhs = self.table.get((top, EOF))
             if rhs is None:
                 return False
-            stack.extend(reversed(rhs))
+            work.extend(reversed(rhs))
         return True
 
     def accepts(self, text: str) -> bool:

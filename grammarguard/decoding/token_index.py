@@ -16,12 +16,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from core.dfa import DFA
+from grammarguard.core.dfa import DFA
 
-CACHE_DIR = Path(__file__).resolve().parent.parent / ".cache"
+CACHE_DIR = Path(os.environ.get("GRAMMARGUARD_CACHE_DIR", Path.home() / ".cache" / "grammarguard"))
 
 
 def _bytes_to_unicode() -> dict[int, str]:
@@ -110,7 +111,7 @@ def load_or_build_index(dfa: DFA, tokenizer, model_name: str = "gpt2", cache_dir
     if path.exists():
         raw = json.loads(path.read_text())
         allowed = {int(q): ids for q, ids in raw["allowed"].items()}
-        nxt = {int(q): dict(zip(allowed[int(q)], states)) for q, states in raw["next"].items()}
+        nxt = {int(q): dict(zip(allowed[int(q)], states, strict=True)) for q, states in raw["next"].items()}
         return TokenIndex(allowed, nxt)
     index = build_index(dfa, vocab_strings(tokenizer))
     cache_dir.mkdir(parents=True, exist_ok=True)
