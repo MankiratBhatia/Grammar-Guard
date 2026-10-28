@@ -8,7 +8,7 @@ state is marked by an arrow coming from an invisible node.
 from __future__ import annotations
 
 from grammarguard.core.dfa import DFA
-from grammarguard.core.nfa import NFA
+from grammarguard.core.nfa import NFA, OTHER
 
 
 def _esc(text: str) -> str:
@@ -27,7 +27,9 @@ def compress_symbols(symbols) -> str:
 
     Several parallel edges between the same two states are drawn as one edge.
     """
-    codes = sorted({ord(c) for c in symbols})
+    symbols = set(symbols)
+    tail = ["other"] if OTHER in symbols else []  # the "any character not in Sigma" symbol
+    codes = sorted({ord(c) for c in symbols if c != OTHER})
     parts, i = [], 0
     while i < len(codes):
         j = i
@@ -38,7 +40,7 @@ def compress_symbols(symbols) -> str:
         else:
             parts.extend(_show(chr(c)) for c in codes[i : j + 1])
         i = j + 1
-    return ",".join(parts)
+    return ",".join(parts + tail)
 
 
 def nfa_to_dot(nfa: NFA) -> str:
@@ -71,7 +73,7 @@ def dfa_to_dot(dfa: DFA, show_dead: bool = False, highlight: int | None = None, 
     lines = ["digraph DFA {", "  rankdir=LR;", "  node [shape=circle, fontsize=11];", "  __start [shape=point];"]
     live = dfa.live_states()
     for q in dfa.states:
-        if q == dfa.dead and not show_dead:
+        if q == dfa.dead and dfa.dead is not None and not show_dead:
             continue
         shape = "doublecircle" if q in dfa.accept else "circle"
         label = dfa.labels.get(q, str(q)) if use_labels else str(q)
@@ -80,7 +82,7 @@ def dfa_to_dot(dfa: DFA, show_dead: bool = False, highlight: int | None = None, 
     lines.append(f"  __start -> q{dfa.start};")
     grouped: dict[tuple[int, int], set[str]] = {}
     for (src, sym), dst in dfa.delta.items():
-        if not show_dead and dfa.dead in (src, dst):
+        if not show_dead and dfa.dead is not None and dfa.dead in (src, dst):
             continue
         grouped.setdefault((src, dst), set()).add(sym)
     for (src, dst), syms in sorted(grouped.items()):

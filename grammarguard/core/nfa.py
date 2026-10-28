@@ -27,6 +27,18 @@ from dataclasses import dataclass, field
 
 from grammarguard.core import regex_parser as rp
 
+# The extra symbol "any character not in Sigma". The empty string can never be a
+# real input character (characters have length 1), so it is a safe sentinel.
+OTHER = ""
+
+
+def other_char(alphabet: frozenset[str] | set[str]) -> str:
+    """A concrete stand-in character for OTHER (used when printing witnesses)."""
+    for c in "#~!@%&_=;'<>`ZYXzyx9":
+        if c not in alphabet:
+            return c
+    return next(chr(i) for i in range(0x100, 0x10FFFF) if chr(i) not in alphabet)
+
 
 @dataclass
 class NFA:
@@ -73,7 +85,8 @@ class NFA:
         """
         current = self.epsilon_closure({self.start})
         for ch in string:
-            current = self.epsilon_closure(self.move(current, ch))
+            symbol = ch if ch in self.alphabet else OTHER
+            current = self.epsilon_closure(self.move(current, symbol))
             if not current:
                 return False
         return bool(current & self.accept)

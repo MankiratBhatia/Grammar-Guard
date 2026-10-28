@@ -106,3 +106,34 @@ Ambiguities in the spec and the (simplest) choice taken for each.
 3. Tests that load GPT-2 are marked `slow`; `make test-fast` / CI run `-m "not slow"`.
 4. `mypy` is enforced on `grammarguard.core` only (the theory code); the ML glue is
    checked by ruff.
+
+## 2.0 Phase B — core theory extensions
+
+1. **OTHER is a real symbol.** Complement needs it: after `!A`, a character outside Σ must be able to
+   lead to an *accepting* state. `DFA.symbols()` = Σ + [OTHER]; `OTHER` is the empty string (never a
+   real input character). The dead state is now `Optional` and detected as a non-accepting trap.
+   Consequence: DFA state counts are unchanged for plain regexes (the dead state was already counted).
+2. **Two minimization algorithms, same result.** Table filling (O(|Q|²·|Σ|) per round) is kept for
+   teaching and for the step-by-step trace; Moore's partition refinement is used for DFAs over 64
+   states (an `email & !contains(..) & length(..)` product has ~1300 states and took seconds with
+   table filling, 0.4 s with partitioning). A test checks the two give identical canonical tables.
+3. **Counting is over Σ only** (OTHER is infinitely many characters). `language_size` therefore means
+   "strings made of the constraint's own symbols".
+4. **State elimination** prints with simplifications (merge single-char alternatives into classes,
+   `R R*` → `R+`, `X{n}` runs). Languages that accept characters outside Σ (e.g. complements) or
+   the empty language cannot be written in our regex syntax (no `.` or ∅) and raise
+   `NotExpressibleError`.
+5. **Test generation has four kinds of cases**: transition coverage (positives), boundary,
+   substitution and deletion negatives, truncations. Substitution/deletion were added after a
+   mutation test showed boundary negatives alone miss validators that over-accept a separator or
+   a too-short length. "Any other character" is infinite, so only a few likely offenders
+   (space `_ - . @ #`) are tried; this limit is documented.
+6. **Constraint algebra syntax**: regex literals are written `/…/`; `&`, `|`, `-`, `!`, parentheses,
+   named constraints, `length`, `contains`, `starts`, `ends`, `concat`, `star`. A state cap
+   (default 2000) stops runaway products with an error that carries a position.
+7. **No separate `trace.py`**: `subset_construction(trace=[...])` and `minimize(trace=[...])` record
+   their own steps, so the Learn page replays the real algorithms rather than a copy.
+8. **Schema compiler** supports object (fixed key order, all required), array (minItems 0/1),
+   string, non-negative integer, boolean, null and enum (compiled to a trie so it stays LL(1)).
+   Building the array rule exposed a genuine LL(1) conflict (`[` `]` vs `[` item…), fixed by
+   left-factoring; `schema_to_grammar` always runs `parse_table()` so a conflict can never slip through.

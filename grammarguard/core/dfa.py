@@ -2,24 +2,26 @@
 
 A DFA is a 5-tuple (Q, Sigma, delta, q0, F) with delta : Q x Sigma -> Q total.
 We represent it as:
-    states : list[int]                 (always 0..n-1)
+    states : list[int]                       (always 0..n-1)
     start  : int
     accept : frozenset[int]
-    delta  : dict[(state, symbol), state]   (total over `alphabet`)
-    dead   : int                       (the explicit dead/trap state)
+    delta  : dict[(state, symbol), state]    (total over symbols() = Sigma + [OTHER])
+    dead   : int | None                      (the non-accepting trap state, if any)
 
 About the alphabet: an LLM can emit ANY character, not only those in the
-regex. All characters outside Sigma behave identically (none of them can ever
-be matched), so conceptually there is one extra symbol "other" that sends every
-state to the dead state. We do not store those edges; `step()` applies the rule.
-This is why the dead state is always present, even if no symbol in Sigma
-reaches it.
+regex. All characters outside Sigma behave identically, so we add ONE extra
+symbol OTHER that stands for "any character not in Sigma". It is a real symbol
+of the automaton: every state has an OTHER edge. For a DFA built from a regex
+the OTHER edges all go to the dead state (the empty subset). After complement
+they can lead to an accepting state, which is why OTHER has to be explicit.
 
 Algorithms in this file:
     subset_construction  epsilon-NFA -> DFA      (reachable subsets only)
-    minimize             table-filling (Myhill-Nerode) algorithm
+    minimize             table filling (Myhill-Nerode) or Moore's partitioning method
     live_states          states from which an accepting state is reachable
+    complement           swap accepting / non-accepting (DFA must be complete)
     product              closure under intersection/union/difference
+    concat, star         closure under concatenation / Kleene star (via NFAs)
     equivalent           L1 = L2  iff  L1 symmetric-difference L2 is empty
 """
 
@@ -27,28 +29,30 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
+from typing import Any
 
-from grammarguard.core.nfa import NFA, regex_to_nfa
+from grammarguard.core.nfa import NFA, OTHER, other_char, regex_to_nfa
 
 
 @dataclass
 class DFA:
-    """A complete DFA (Q, Sigma, delta, q0, F) plus an explicit dead state."""
+    """A complete DFA (Q, Sigma + {OTHER}, delta, q0, F)."""
 
     states: list[int]
     start: int
     accept: frozenset[int]
     delta: dict[tuple[int, str], int]
     alphabet: frozenset[str]
-    dead: int
+    dead: int | None
     labels: dict[int, str] = field(default_factory=dict)  # for display only
 
-    def step(self, q: int, ch: str) -> int:
-        """The transition function delta(q, ch).
+    def symbols(self) -> list[str]:
+        """Sigma in sorted order, then OTHER (a fixed order makes BFS canonical)."""
+        return sorted(self.alphabet) + [OTHER]
 
-        Symbols outside Sigma go to the dead state (the implicit "other" symbol).
-        """
-        return self.delta.get((q, ch), self.dead)
+    def step(self, q: int, ch: str) -> int:
+        """The transition function delta(q, ch). Characters outside Sigma use the OTHER edge."""
+        return self.delta[(q, ch if ch in self.alphabet else OTHER)]
 
     def run(self, string: str, q: int | None = None) -> int:
         """Extended transition function delta*(q, w): fold step() over the string."""
@@ -82,13 +86,13 @@ class DFA:
         return frozenset(live)
 
     def reachable_states(self) -> frozenset[int]:
-        """States reachable from q0 by forward BFS (plus the dead state, reachable via 'other')."""
-        seen = {self.start, self.dead}
+        """States reachable from q0 by forward BFS over Sigma + {OTHER}."""
+        seen = {self.start}
         queue = deque([self.start])
         while queue:
             q = queue.popleft()
-            for a in sorted(self.alphabet):
-                r = self.step(q, a)
+            for a in self.symbols():
+                r = self.delta[(q, a)]
                 if r not in seen:
                     seen.add(r)
                     queue.append(r)
@@ -98,47 +102,64 @@ class DFA:
         """|Q|, counting the dead state."""
         return len(self.states)
 
+    def with_alphabet(self, alphabet: frozenset[str]) -> DFA:
+        """The same language over a larger Sigma: each new character c gets the
+        OTHER edge of every state (c was 'other' before, so it behaves the same)."""
+        extra = alphabet - self.alphabet
+        delta = dict(self.delta)
+        for q in self.states:
+            for c in extra:
+                delta[(q, c)] = self.delta[(q, OTHER)]
+        return DFA(self.states, self.start, self.accept, delta, self.alphabet | alphabet, self.dead, dict(self.labels))
+
     def signature(self) -> str:
         """A canonical text encoding of the DFA (used as a cache key).
 
         For a minimized DFA renumbered in BFS order this is unique per language,
         because the minimal DFA is unique up to isomorphism (Myhill-Nerode).
         """
-        rows = [f"start={self.start};dead={self.dead};accept={sorted(self.accept)}"]
+        rows = [f"start={self.start};accept={sorted(self.accept)}"]
         for (q, a), r in sorted(self.delta.items()):
             rows.append(f"{q},{a!r},{r}")
         return "\n".join(rows)
 
 
-def _renumber(start, accept, delta, alphabet, dead, labels) -> DFA:
-    """Rename states to 0..n-1 in BFS order from the start (sorted symbols).
+def find_dead(states, accept, delta, symbols) -> int | None:
+    """The dead state: non-accepting and every symbol loops back to it (a trap).
+    A minimal DFA has at most one; None if the language has no dead state."""
+    for q in states:
+        if q not in accept and all(delta[(q, a)] == q for a in symbols):
+            return q
+    return None
+
+
+def _renumber(start, accept, delta, alphabet, labels) -> DFA:
+    """Rename states to 0..n-1 in BFS order from the start (Sigma sorted, then OTHER).
 
     Gives a canonical numbering, so isomorphic DFAs get identical tables.
-    The dead state is reached via 'other', so it is numbered last if Sigma
-    alone does not reach it.
     """
+    symbols = sorted(alphabet) + [OTHER]
     order = [start]
     index = {start: 0}
     queue = deque([start])
     while queue:
         q = queue.popleft()
-        for a in sorted(alphabet):
+        for a in symbols:
             r = delta[(q, a)]
             if r not in index:
                 index[r] = len(order)
                 order.append(r)
                 queue.append(r)
-    if dead not in index:
-        index[dead] = len(order)
-        order.append(dead)
-    new_delta = {(index[q], a): index[delta[(q, a)]] for q in order for a in alphabet}
+    new_delta = {(index[q], a): index[delta[(q, a)]] for q in order for a in symbols}
+    new_accept = frozenset(index[q] for q in order if q in accept)
+    states = list(range(len(order)))
     return DFA(
-        states=list(range(len(order))),
+        states=states,
         start=0,
-        accept=frozenset(index[q] for q in order if q in accept),
+        accept=new_accept,
         delta=new_delta,
         alphabet=frozenset(alphabet),
-        dead=index[dead],
+        dead=find_dead(states, new_accept, new_delta, symbols),
         labels={index[q]: labels[q] for q in order},
     )
 
@@ -148,41 +169,45 @@ def _fmt_set(s) -> str:
     return "{" + ",".join(str(x) for x in sorted(s)) + "}"
 
 
-def subset_construction(nfa: NFA) -> DFA:
+def subset_construction(nfa: NFA, trace: list[dict[str, Any]] | None = None) -> DFA:
     """Subset construction: each DFA state = epsilon-closure of a set of NFA states.
 
         q0'          = E({q0})
-        delta'(S, a) = E(move(S, a))
+        delta'(S, a) = E(move(S, a))          for a in Sigma and a = OTHER
         F'           = { S : S contains an NFA accepting state }
 
     Only subsets reachable from q0' are generated (worklist algorithm), so we
-    avoid building all 2^|Q| subsets. The empty subset is the dead state; we
-    always add it so the DFA is complete for every input character.
+    avoid building all 2^|Q| subsets. The empty subset, if reached, is the dead
+    state; for a regex NFA it is always reached via OTHER.
+
+    If `trace` is a list, one record per (subset, symbol) step is appended to it
+    (used by the Learn page; it is the real algorithm, not a re-implementation).
     """
-    alphabet = sorted(nfa.alphabet)
+    symbols = sorted(nfa.alphabet) + [OTHER]
     start_set = nfa.epsilon_closure({nfa.start})
     ids: dict[frozenset[int], int] = {start_set: 0}
     worklist = [start_set]
     delta: dict[tuple[int, str], int] = {}
     while worklist:
         S = worklist.pop()
-        for a in alphabet:
-            U = nfa.epsilon_closure(nfa.move(S, a))
-            if U not in ids:
+        for a in symbols:
+            moved = nfa.move(S, a)
+            U = nfa.epsilon_closure(moved)
+            is_new = U not in ids
+            if is_new:
                 ids[U] = len(ids)
                 worklist.append(U)
             delta[(ids[S], a)] = ids[U]
-    dead_set: frozenset[int] = frozenset()
-    if dead_set not in ids:  # Sigma never reaches it, but "other" symbols do
-        ids[dead_set] = len(ids)
-        for a in alphabet:
-            delta[(ids[dead_set], a)] = ids[dead_set]
+            if trace is not None:
+                trace.append(
+                    {"from": sorted(S), "symbol": a, "move": sorted(moved), "closure": sorted(U), "new": is_new}
+                )
     accept = frozenset(i for S, i in ids.items() if S & nfa.accept)
     labels = {i: ("∅" if not S else _fmt_set(S)) for S, i in ids.items()}
-    return _renumber(ids[start_set], accept, delta, alphabet, ids[dead_set], labels)
+    return _renumber(ids[start_set], accept, delta, nfa.alphabet, labels)
 
 
-def minimize(dfa: DFA) -> DFA:
+def minimize_table(dfa: DFA, trace: list[dict[str, Any]] | None = None) -> DFA:
     """Table-filling minimization (Myhill-Nerode / Hopcroft's marking algorithm).
 
     1. Remove unreachable states.
@@ -193,35 +218,42 @@ def minimize(dfa: DFA) -> DFA:
        string exists).
     4. Unmarked pairs are equivalent; merge each equivalence class into one state.
 
-    The 'other' symbol sends every state to dead, so it never distinguishes
-    a pair and need not be checked.
+    If `trace` is a list, each round's newly marked pairs (with the reason) are appended.
     """
     states = sorted(dfa.reachable_states())
-    alphabet = sorted(dfa.alphabet)
+    symbols = dfa.symbols()
 
     def key(p: int, q: int) -> tuple[int, int]:
         """Unordered pair as an ordered tuple (the table is triangular)."""
         return (p, q) if p < q else (q, p)
 
     marked: set[tuple[int, int]] = set()
+    round0 = []
     for i, p in enumerate(states):
         for q in states[i + 1 :]:
             if (p in dfa.accept) != (q in dfa.accept):
                 marked.add((p, q))
+                round0.append({"pair": [p, q], "reason": "ε: one accepting, one not"})
+    if trace is not None:
+        trace.append({"round": 0, "marked": round0})
 
-    changed = True
+    changed, rnd = True, 0
     while changed:
-        changed = False
+        changed, rnd = False, rnd + 1
+        newly = []
         for i, p in enumerate(states):
             for q in states[i + 1 :]:
                 if (p, q) in marked:
                     continue
-                for a in alphabet:
-                    p2, q2 = dfa.step(p, a), dfa.step(q, a)
+                for a in symbols:
+                    p2, q2 = dfa.delta[(p, a)], dfa.delta[(q, a)]
                     if p2 != q2 and key(p2, q2) in marked:
                         marked.add((p, q))
                         changed = True
+                        newly.append({"pair": [p, q], "symbol": a, "leads_to": list(key(p2, q2))})
                         break
+        if trace is not None and newly:
+            trace.append({"round": rnd, "marked": newly})
 
     # Each state's representative = smallest state equivalent to it.
     # (Unmarked = equivalent, and equivalence is transitive, so this is well defined.)
@@ -229,13 +261,64 @@ def minimize(dfa: DFA) -> DFA:
     for q in states:
         rep[q] = next(p for p in states if p == q or (p < q and (p, q) not in marked))
 
+    return _quotient(dfa, states, rep, trace)
+
+
+def _quotient(dfa: DFA, states: list[int], rep: dict[int, int], trace) -> DFA:
+    """Quotient automaton M/~ : one state per equivalence class (named by its representative)."""
+    symbols = dfa.symbols()
     classes: dict[int, list[int]] = {}
     for q in states:
         classes.setdefault(rep[q], []).append(q)
-    delta = {(r, a): rep[dfa.step(r, a)] for r in classes for a in alphabet}
+    if trace is not None:
+        trace.append({"classes": [members for members in classes.values()]})
+    delta = {(r, a): rep[dfa.delta[(r, a)]] for r in classes for a in symbols}
     accept = frozenset(r for r in classes if r in dfa.accept)
     labels = {r: _fmt_set(members) for r, members in classes.items()}
-    return _renumber(rep[dfa.start], accept, delta, alphabet, rep[dfa.dead], labels)
+    return _renumber(rep[dfa.start], accept, delta, dfa.alphabet, labels)
+
+
+def minimize_partition(dfa: DFA) -> DFA:
+    """Partitioning method (Moore's algorithm): refine {F, Q - F} until stable.
+
+    Round k splits states that are k-distinguishable: two states stay in the
+    same block only if, for every symbol, they move into the same block. Each
+    round costs O(|Q| * |Sigma|) instead of the O(|Q|^2 * |Sigma|) of table
+    filling, so this is used for large automata. Both compute the same
+    Myhill-Nerode classes (tested), so the result is the same minimal DFA.
+    """
+    states = sorted(dfa.reachable_states())
+    symbols = dfa.symbols()
+    block = {q: int(q in dfa.accept) for q in states}
+    while True:
+        signature = {q: (block[q], tuple(block[dfa.delta[(q, a)]] for a in symbols)) for q in states}
+        numbering: dict[tuple, int] = {}
+        new_block = {q: numbering.setdefault(signature[q], len(numbering)) for q in states}
+        if len(numbering) == len(set(block.values())):
+            break
+        block = new_block
+    first: dict[int, int] = {}
+    for q in states:
+        first.setdefault(block[q], q)
+    return _quotient(dfa, states, {q: first[block[q]] for q in states}, None)
+
+
+def minimize(dfa: DFA, trace: list[dict[str, Any]] | None = None, method: str = "auto") -> DFA:
+    """Minimize a DFA. method = "table" (table filling), "partition" (Moore), or
+    "auto": table filling for small automata or when a trace is wanted, else partition."""
+    if method == "table" or (method == "auto" and (trace is not None or dfa.num_states() <= 64)):
+        return minimize_table(dfa, trace)
+    return minimize_partition(dfa)
+
+
+def complement(dfa: DFA) -> DFA:
+    """Closure under complement: same complete DFA, accepting and non-accepting swapped.
+
+    Correct only because the DFA is complete over ALL characters (OTHER included):
+    every string ends in exactly one state, so it is accepted by exactly one of M, M'.
+    """
+    accept = frozenset(q for q in dfa.states if q not in dfa.accept)
+    return _renumber(dfa.start, accept, dfa.delta, dfa.alphabet, dfa.labels)
 
 
 PRODUCT_MODES = {
@@ -254,19 +337,19 @@ def product(d1: DFA, d2: DFA, mode: str = "intersection") -> DFA:
         or symmetric difference.
 
     This is the proof that regular languages are closed under these operations.
-    Sigma = Sigma1 U Sigma2; a symbol missing from one DFA sends it to its dead
-    state. Only reachable pairs are built.
+    Sigma = Sigma1 U Sigma2; a character missing from one DFA's Sigma follows
+    that DFA's OTHER edge. Only reachable pairs are built.
     """
     accepting = PRODUCT_MODES[mode]
-    alphabet = sorted(d1.alphabet | d2.alphabet)
+    alphabet = d1.alphabet | d2.alphabet
+    symbols = sorted(alphabet) + [OTHER]
     start = (d1.start, d2.start)
-    dead = (d1.dead, d2.dead)
-    seen = {start, dead}
-    queue = deque([start, dead])
+    seen = {start}
+    queue = deque([start])
     delta: dict[tuple[tuple[int, int], str], tuple[int, int]] = {}
     while queue:
         p, q = queue.popleft()
-        for a in alphabet:
+        for a in symbols:
             nxt = (d1.step(p, a), d2.step(q, a))
             delta[((p, q), a)] = nxt
             if nxt not in seen:
@@ -274,16 +357,61 @@ def product(d1: DFA, d2: DFA, mode: str = "intersection") -> DFA:
                 queue.append(nxt)
     accept = {pq for pq in seen if accepting(pq[0] in d1.accept, pq[1] in d2.accept)}
     labels = {pq: f"({pq[0]},{pq[1]})" for pq in seen}
-    return _renumber(start, accept, delta, alphabet, dead, labels)
+    return _renumber(start, accept, delta, alphabet, labels)
+
+
+def dfa_to_nfa(dfa: DFA, offset: int = 0) -> NFA:
+    """View a DFA as an NFA (every DFA is an NFA with singleton next-state sets).
+    States are shifted by `offset` so two automata can be glued together."""
+    nfa = NFA(alphabet=dfa.alphabet)
+    nfa.states = {q + offset for q in dfa.states}
+    nfa.start = dfa.start + offset
+    nfa.accept = {q + offset for q in dfa.accept}
+    for (q, a), r in dfa.delta.items():
+        nfa.add_edge(q + offset, a, r + offset)
+    return nfa
+
+
+def concat(d1: DFA, d2: DFA) -> DFA:
+    """Closure under concatenation: glue the NFAs of d1 and d2 with epsilon edges
+    from d1's accepting states to d2's start, then determinize and minimize."""
+    sigma = d1.alphabet | d2.alphabet
+    a, b = d1.with_alphabet(sigma), d2.with_alphabet(sigma)
+    n1, n2 = dfa_to_nfa(a), dfa_to_nfa(b, offset=a.num_states())
+    nfa = NFA(alphabet=sigma)
+    nfa.states = n1.states | n2.states
+    nfa.start = n1.start
+    nfa.accept = set(n2.accept)
+    for (q, s), dsts in list(n1.delta.items()) + list(n2.delta.items()):
+        for r in dsts:
+            nfa.add_edge(q, s, r)
+    for f in n1.accept:
+        nfa.add_edge(f, None, n2.start)
+    return minimize(subset_construction(nfa))
+
+
+def star(d: DFA) -> DFA:
+    """Closure under Kleene star: new accepting start state with an epsilon edge
+    into d, and epsilon edges from d's accepting states back to d's start."""
+    nfa = dfa_to_nfa(d, offset=1)
+    nfa.states.add(0)
+    nfa.add_edge(0, None, nfa.start)
+    for f in list(nfa.accept):
+        nfa.add_edge(f, None, nfa.start)
+    nfa.start = 0
+    nfa.accept.add(0)
+    return minimize(subset_construction(nfa))
 
 
 def shortest_accepted(dfa: DFA) -> str | None:
     """Shortest string in L(M), or None if L(M) is empty (emptiness test).
 
     BFS from q0 explores strings in order of length (and, with symbols tried in
-    sorted order, alphabetically within a length), so the first accepting
-    state found gives a shortest witness. We rebuild it from parent pointers.
+    a fixed order, alphabetically within a length), so the first accepting
+    state found gives a shortest witness. We rebuild it from parent pointers;
+    an OTHER edge is shown as a concrete character outside Sigma.
     """
+    stand_in = other_char(dfa.alphabet)
     parent: dict[int, tuple[int, str] | None] = {dfa.start: None}
     queue = deque([dfa.start])
     while queue:
@@ -292,10 +420,10 @@ def shortest_accepted(dfa: DFA) -> str | None:
             chars = []
             while (link := parent[q]) is not None:
                 q, a = link
-                chars.append(a)
+                chars.append(stand_in if a == OTHER else a)
             return "".join(reversed(chars))
-        for a in sorted(dfa.alphabet):
-            r = dfa.step(q, a)
+        for a in dfa.symbols():
+            r = dfa.delta[(q, a)]
             if r not in parent:
                 parent[r] = (q, a)
                 queue.append(r)
