@@ -67,3 +67,31 @@ Ambiguities in the spec and the (simplest) choice taken for each.
    count and a step table updating per token. Simplest thing that works in
    Streamlit's script model.
 5. **UI is tested headlessly** with Streamlit's `AppTest`.
+
+## Phase 4 — CFG, PDA, JSON
+
+1. **Character-level grammar.** Terminals are single characters (or sets such
+   as `[0-9]`), since the decoder feeds text character by character. So
+   strings, ints and `true/false/null` are spelled out in the grammar and the
+   whole thing stays LL(1) with a table keyed by (nonterminal, character).
+2. **No whitespace** in the JSON subset (`{"a":1,"b":2}`, compact form). Real
+   JSON allows spaces; allowing them would add optional-whitespace
+   nonterminals everywhere. GPT-2 likes `", "`, so the PDA simply forces the
+   compact style.
+3. **Top level must be an object or array** (`Doc`), as in the original JSON
+   RFC. Otherwise greedy decoding often stops after a bare `0`.
+4. **Ints:** `0` or `[1-9][0-9]*` (no leading zeros). **Strings:** lowercase
+   letters only, no escapes, as the spec said.
+5. **One-state PDA, accept by empty stack.** "Expand" moves read no input and
+   are chosen by looking at the next character; this look-ahead is what makes
+   the PDA deterministic. At end of input only epsilon-expansions
+   (`M[A, EOF]`) may remain.
+6. **Stacks are immutable tuples**, so trying a candidate token never disturbs
+   the real stack.
+7. **Top-100 then fallback.** Greedy over the top-100 valid tokens equals
+   greedy over the whole vocabulary (tested). With top-k sampling the top-100
+   cut is an approximation. The fallback scans all 50 257 tokens only when
+   none of the top 100 is valid.
+8. **Stop reasons** as in Phase 2. `max_tokens` leaves a viable prefix; EOS is
+   forced exactly when the stack is empty and nothing else is legal.
+9. `json` (stdlib) is used only in tests, as an oracle, like `re` in Phase 1.

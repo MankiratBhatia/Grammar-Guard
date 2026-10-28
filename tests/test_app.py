@@ -49,8 +49,19 @@ def test_generate_tab():
     """Clicking Generate streams both columns and the constrained text matches the regex."""
     at = AppTest.from_file(APP, default_timeout=180).run()
     at.text_input(key="gen_regex").set_value("EMP-[0-9]{3}").run()
-    at.text_input(key="gen_prompt").set_value("ID: ").run()
+    at.text_area(key="gen_prompt").set_value("ID: ").run()
     at.button[0].click().run()
     assert not at.exception
     texts = " ".join(m.value for m in at.markdown)
     assert "matches regex: **True**" in texts
+
+
+def test_generate_tab_json_mode():
+    """JSON mode streams a PDA-constrained output with a stack column; the result is valid in our subset."""
+    at = AppTest.from_file(APP, default_timeout=180).run()
+    at.radio(key="gen_mode").set_value("JSON (PDA)").run()
+    at.button[0].click().run()
+    assert not at.exception
+    texts = " ".join(m.value for m in at.markdown)
+    assert "valid JSON in our subset: **True**" in texts
+    assert any("stack (top first)" in df.value.columns for df in at.dataframe)
