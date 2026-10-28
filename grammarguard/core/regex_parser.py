@@ -356,16 +356,46 @@ def alphabet(node: Node) -> frozenset[str]:
     return frozenset()
 
 
+_CLASS_SPECIAL = set("]\\-^[")
+
+
+def class_text(chars: frozenset[str]) -> str:
+    """Print a character class with ranges, e.g. [0-9a-f_] (three or more consecutive characters become a range)."""
+    codes = sorted(ord(c) for c in chars)
+    parts: list[str] = []
+    i = 0
+
+    def e(c: int) -> str:
+        ch = chr(c)
+        return "\\" + ch if ch in _CLASS_SPECIAL else ch
+
+    while i < len(codes):
+        j = i
+        while j + 1 < len(codes) and codes[j + 1] == codes[j] + 1:
+            j += 1
+        if j - i >= 2:
+            parts.append(f"{e(codes[i])}-{e(codes[j])}")
+        else:
+            parts.extend(e(c) for c in codes[i : j + 1])
+        i = j + 1
+    return "[" + "".join(parts) + "]"
+
+
 def to_string(node: Node) -> str:
-    """Pretty-print a (desugared) AST back to regex syntax, fully parenthesised."""
+    """Pretty-print a (desugared) AST back to regex syntax, with brackets only where they are needed."""
     if isinstance(node, Epsilon):
         return "ε"
     if isinstance(node, Literal):
         return node.char
     if isinstance(node, CharClass):
-        return "[" + "".join(sorted(node.chars)) + "]"
+        return class_text(node.chars)
     if isinstance(node, Concat):
         return to_string(node.left) + to_string(node.right)
     if isinstance(node, Union):
         return "(" + to_string(node.left) + "|" + to_string(node.right) + ")"
-    return "(" + to_string(node.child) + ")*"
+    text = to_string(node.child)
+    if isinstance(
+        node.child, (Literal, CharClass, Epsilon, Union)
+    ):  # already a single unit (a union prints its own brackets)
+        return text + "*"
+    return "(" + text + ")*"

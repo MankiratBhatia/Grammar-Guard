@@ -219,3 +219,40 @@ Ambiguities in the spec and the (simplest) choice taken for each.
    wrapped as `/.../`) plus any user-defined `names`, so `/certificate/verify` needs only the certificate.
 10. **Not done yet:** the React frontend (Phase E); `python -m grammarguard.api` serves the API and will
     also serve `frontend/dist` once it exists.
+
+## 2.0 Phase E — React frontend
+
+1. **Stack:** React 18 + TypeScript (strict) + Vite + Tailwind 4, in `frontend/`. Node 20 was installed
+   user-level from the official tarball (SHA-256 verified), not through a `curl | bash` installer.
+   One process in production: `npm run build` writes `frontend/dist`, which FastAPI serves at `/`
+   (API routes win; a test checks the static mount does not shadow `/api` or `/docs`). In development the
+   Vite server proxies `/api` to the backend.
+2. **Types come from the backend.** `npm run gen:api` dumps the live OpenAPI schema and generates
+   `src/api/schema.d.ts`, so a renamed field breaks the frontend build instead of production. The SSE event
+   payloads are not in OpenAPI and are typed by hand in `api/types.ts`.
+3. **npm workaround:** npm 10.8's resolver crashes (`edgesOut`, in `#loadPeerSet`) on this dependency set, so
+   `frontend/.npmrc` sets `legacy-peer-deps=true`. Consequence: peer dependencies are not installed
+   automatically, so `@testing-library/dom` is listed explicitly and peer ranges were checked by hand
+   (vite 8 satisfies every plugin). TypeScript is pinned to 5.x because `openapi-typescript` needs the compiler's
+   JavaScript API, which TypeScript 7 no longer ships.
+4. **Streaming:** `EventSource` cannot POST, so `api/sse.ts` reads `fetch` response streams with its own SSE parser
+   (handles CRLF, keep-alive comments, events split across chunks; unit-tested). Aborting the request is what
+   triggers the server-side cancellation.
+5. **Graphs:** our DOT text is rendered in the browser with Graphviz compiled to WebAssembly (`@viz-js/viz`),
+   loaded lazily (a separate 1.4 MB chunk, fetched only when the first graph is drawn). The white page
+   background is removed and strokes use `currentColor` so graphs work in dark mode. Highlighting the current
+   state is done by appending one node statement to the DOT, not by a second layout engine.
+6. **Pages:** Studio, Generate, Constraint Algebra, Validator Lab, JSON & Schema, Learn. The **Benchmarks**
+   page from the plan moves to Phase F, where the evaluation results it displays are produced.
+7. **Theme:** CSS variables for light and dark (system preference by default, overridable in the sidebar);
+   charts and graphs use the same tokens. Layout collapses to a top bar below the `md` breakpoint.
+8. **Verified in a real browser** (headless Windows Chrome via WSL), not only in jsdom: all six pages were
+   screenshotted. Interactive states used a throwaway same-origin harness that replays *recorded real server
+   streams* (captured with curl) because headless Chrome's virtual clock outruns real model time. Findings
+   fixed from those screenshots: a misleading "table below" message when a graph is too large, count columns
+   overflowing the chart, double brackets in the parsed-AST line (`((a|b))*`), and `[0-9]` printing as
+   `[0123456789]` (the range printer was moved from `elimination.py` into `regex_parser.class_text`).
+9. **Tests:** 31 Vitest tests (SSE parser, API client errors, helpers, and every page against a mocked backend,
+   including error paths, stream events, the PDA stack view and the step players).
+10. **Not done:** the Playwright suite from the plan (browsers cannot be installed without sudo here). The
+    real-browser checks above were manual screenshots, not an automated end-to-end test.

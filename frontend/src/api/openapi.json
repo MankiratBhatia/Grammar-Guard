@@ -1,0 +1,1944 @@
+{
+ "openapi": "3.1.0",
+ "info": {
+  "title": "GrammarGuard",
+  "description": "\nFormal guarantees for LLM output, and formal QA for the validators behind them.\n\n* **Automata**: regex -> \u03b5-NFA -> DFA -> minimal DFA, membership with state paths.\n* **Constraint algebra**: combine regular languages with \u2229 \u222a \u2212 \u00ac (product / complement constructions).\n* **Validator Lab**: diff two validators with counterexamples; synthesize test suites.\n* **Generate**: stream GPT-2 output constrained by a DFA or a JSON PDA, with per-token\n  *constraint pressure* telemetry and verifiable certificates.\n",
+  "version": "2.0.0.dev0"
+ },
+ "paths": {
+  "/api/v1/compile": {
+   "post": {
+    "tags": [
+     "automata"
+    ],
+    "summary": "Regex -> \u03b5-NFA -> DFA -> minimal DFA",
+    "description": "Run the whole pipeline (Thompson, subset construction, table-filling) and return each automaton\nas DOT text, a transition list and state counts.",
+    "operationId": "compile_regex_api_v1_compile_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CompileRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CompileResponse"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/membership": {
+   "post": {
+    "tags": [
+     "automata"
+    ],
+    "summary": "Run a string through the DFA",
+    "description": "Accepted or not, with the state path. The path is also returned as a verifiable certificate.",
+    "operationId": "membership_api_v1_membership_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MembershipRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MembershipResponse"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/certificate/verify": {
+   "post": {
+    "tags": [
+     "automata"
+    ],
+    "summary": "Re-check a certificate",
+    "description": "Rebuild the automaton from the constraint text inside the certificate and replay the recorded run.\nNo language model is involved.",
+    "operationId": "verify_certificate_api_v1_certificate_verify_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CertificateVerifyRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CertificateVerifyResponse"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/builtins": {
+   "get": {
+    "tags": [
+     "algebra"
+    ],
+    "summary": "Named constraints usable in expressions",
+    "description": "The built-in names (digit, email, iso_date, ...) and the regex behind each.",
+    "operationId": "builtins_api_v1_builtins_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BuiltinsResponse"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/algebra": {
+   "post": {
+    "tags": [
+     "algebra"
+    ],
+    "summary": "Evaluate a constraint expression",
+    "description": "Combine regular languages with \u2229 \u222a \u2212 \u00ac concat star (product / complement constructions), minimize,\nand describe the result: size, examples, an equivalent regex (state elimination).",
+    "operationId": "evaluate_expression_api_v1_algebra_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AlgebraRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AlgebraResponse"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/equivalence": {
+   "post": {
+    "tags": [
+     "algebra"
+    ],
+    "summary": "Are two constraints the same language?",
+    "description": "L1 = L2 iff their symmetric difference is empty; otherwise a shortest string in it is returned.",
+    "operationId": "check_equivalence_api_v1_equivalence_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EquivalenceRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/EquivalenceResponse"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/count": {
+   "post": {
+    "tags": [
+     "algebra"
+    ],
+    "summary": "Count and sample the language",
+    "description": "Number of accepted strings of each length (dynamic programming over the DFA, over the constraint's own\nalphabet), whether the language is finite, and exact uniform samples of one length.",
+    "operationId": "count_api_v1_count_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CountRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CountResponse"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/validators/diff": {
+   "post": {
+    "tags": [
+     "validators"
+    ],
+    "summary": "Compare an old and a new validator",
+    "description": "Closure properties in action: L_old \u2212 L_new, L_new \u2212 L_old and L_old \u2229 L_new are each a product DFA;\na non-empty one is searched (BFS) for its shortest strings, which are the witnesses.",
+    "operationId": "diff_api_v1_validators_diff_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DiffRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DiffResponse"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/validators/testgen": {
+   "post": {
+    "tags": [
+     "validators"
+    ],
+    "summary": "Synthesize a test suite with transition coverage",
+    "description": "Positive cases covering every DFA transition, plus boundary / substitution / deletion / truncation\nnegatives. Optionally exported as CSV or as a ready-to-run pytest file.",
+    "operationId": "generate_test_suite_api_v1_validators_testgen_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TestgenRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TestgenResponse"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/learn/subset": {
+   "get": {
+    "tags": [
+     "learn"
+    ],
+    "summary": "Subset construction, step by step",
+    "description": "Each record is one (subset S, symbol a) step: move(S, a), its \u03b5-closure, and whether it is a new DFA state.\nThe trace is produced by the real algorithm.",
+    "operationId": "subset_api_v1_learn_subset_get",
+    "parameters": [
+     {
+      "name": "regex",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "maxLength": 200,
+       "examples": [
+        "(a|b)*abb"
+       ],
+       "title": "Regex"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LearnSubsetResponse"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/learn/minimize": {
+   "get": {
+    "tags": [
+     "learn"
+    ],
+    "summary": "Table-filling minimization, round by round",
+    "description": "Round 0 marks pairs split by acceptance; each later round marks pairs that reach a marked pair on some\nsymbol. Unmarked pairs are merged.",
+    "operationId": "minimization_api_v1_learn_minimize_get",
+    "parameters": [
+     {
+      "name": "regex",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "maxLength": 200,
+       "examples": [
+        "(a|b)*abb"
+       ],
+       "title": "Regex"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LearnMinimizeResponse"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/generate": {
+   "post": {
+    "tags": [
+     "generate"
+    ],
+    "summary": "Stream a DFA-constrained generation (SSE)",
+    "description": "Streams `meta`, then `token` events (text, DFA state, #allowed tokens, constraint-pressure telemetry),\nthen `done` with the full text, whether it matches, a pressure summary and a verifiable certificate.\nWith `compare` an unconstrained run is streamed first (events carry `source`).",
+    "operationId": "generate_api_v1_generate_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/GenerateRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/generate/json": {
+   "post": {
+    "tags": [
+     "generate"
+    ],
+    "summary": "Stream a PDA-constrained JSON generation (SSE)",
+    "description": "Like `/generate`, but the constraint is the JSON grammar (or a mini JSON schema compiled to an LL(1)\ngrammar). Token events carry the PDA stack, how many tokens were checked, and whether the full-vocabulary\nfallback was needed.",
+    "operationId": "generate_json_api_v1_generate_json_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/JsonGenerateRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/generate/batch": {
+   "post": {
+    "tags": [
+     "generate"
+    ],
+    "summary": "Several distinct valid samples (synthetic test data)",
+    "description": "Runs constrained generation with different seeds until `count` DISTINCT strings that end in an accepting\nstate are found (at most 3x`count` attempts, within the time limit). Useful as synthetic test data for a\nvalidator: every sample is guaranteed to match.",
+    "operationId": "generate_batch_api_v1_generate_batch_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/BatchRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BatchResponse"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/system/health": {
+   "get": {
+    "tags": [
+     "system"
+    ],
+    "summary": "Liveness and model state",
+    "description": "Always 200 while the server is up; `engine.loaded` tells whether the language model has finished loading.",
+    "operationId": "health_api_v1_system_health_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HealthResponse"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/system/models": {
+   "get": {
+    "tags": [
+     "system"
+    ],
+    "summary": "Configured model and limits",
+    "description": "The model in use and the limits the server enforces (so a UI can validate before sending).",
+    "operationId": "models_api_v1_system_models_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "type": "object",
+         "title": "Response Models Api V1 System Models Get"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "schemas": {
+   "AlgebraRequest": {
+    "properties": {
+     "expression": {
+      "type": "string",
+      "title": "Expression",
+      "examples": [
+       "email & !contains(/competitor/) & length(5, 40)"
+      ]
+     },
+     "names": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "type": "object",
+      "title": "Names"
+     },
+     "examples": {
+      "type": "integer",
+      "maximum": 50.0,
+      "minimum": 0.0,
+      "title": "Examples",
+      "default": 8
+     }
+    },
+    "type": "object",
+    "required": [
+     "expression"
+    ],
+    "title": "AlgebraRequest",
+    "description": "Evaluate a constraint expression."
+   },
+   "AlgebraResponse": {
+    "properties": {
+     "expression": {
+      "type": "string",
+      "title": "Expression"
+     },
+     "dfa": {
+      "$ref": "#/components/schemas/AutomatonView"
+     },
+     "steps": {
+      "items": {
+       "$ref": "#/components/schemas/AlgebraStep"
+      },
+      "type": "array",
+      "title": "Steps"
+     },
+     "finite": {
+      "type": "boolean",
+      "title": "Finite"
+     },
+     "size": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Size",
+      "description": "number of strings if the language is finite (over its own alphabet)"
+     },
+     "regex": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Regex",
+      "description": "an equivalent regex (Kleene's theorem), when one can be written"
+     },
+     "regex_note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Regex Note"
+     },
+     "examples": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Examples"
+     },
+     "counts": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Counts",
+      "description": "number of accepted strings of length 0..12"
+     }
+    },
+    "type": "object",
+    "required": [
+     "expression",
+     "dfa",
+     "steps",
+     "finite",
+     "examples",
+     "counts"
+    ],
+    "title": "AlgebraResponse",
+    "description": "Minimal DFA of the expression and what can be said about its language."
+   },
+   "AlgebraStep": {
+    "properties": {
+     "expr": {
+      "type": "string",
+      "title": "Expr"
+     },
+     "operation": {
+      "type": "string",
+      "title": "Operation"
+     },
+     "states": {
+      "type": "integer",
+      "title": "States"
+     }
+    },
+    "type": "object",
+    "required": [
+     "expr",
+     "operation",
+     "states"
+    ],
+    "title": "AlgebraStep",
+    "description": "One closure construction used while evaluating."
+   },
+   "AutomatonView": {
+    "properties": {
+     "states": {
+      "type": "integer",
+      "title": "States"
+     },
+     "live_states": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Live States"
+     },
+     "start": {
+      "type": "integer",
+      "title": "Start"
+     },
+     "accepting": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Accepting"
+     },
+     "dot": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Dot",
+      "description": "Graphviz DOT; null when the automaton is too large to draw"
+     },
+     "transitions": {
+      "items": {
+       "$ref": "#/components/schemas/Transition"
+      },
+      "type": "array",
+      "title": "Transitions"
+     },
+     "state_labels": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "type": "object",
+      "title": "State Labels",
+      "description": "NFA state sets / merged states"
+     }
+    },
+    "type": "object",
+    "required": [
+     "states",
+     "start",
+     "accepting",
+     "transitions"
+    ],
+    "title": "AutomatonView",
+    "description": "A DFA or NFA ready to display."
+   },
+   "BatchRequest": {
+    "properties": {
+     "constraint": {
+      "$ref": "#/components/schemas/Constraint"
+     },
+     "prompt": {
+      "type": "string",
+      "title": "Prompt",
+      "default": ""
+     },
+     "count": {
+      "type": "integer",
+      "minimum": 1.0,
+      "title": "Count",
+      "default": 5
+     },
+     "max_tokens": {
+      "type": "integer",
+      "maximum": 1000.0,
+      "minimum": 1.0,
+      "title": "Max Tokens",
+      "default": 40
+     },
+     "top_k": {
+      "type": "integer",
+      "maximum": 200.0,
+      "minimum": 2.0,
+      "title": "Top K",
+      "default": 20
+     },
+     "temperature": {
+      "type": "number",
+      "maximum": 5.0,
+      "exclusiveMinimum": 0.0,
+      "title": "Temperature",
+      "default": 1.0
+     },
+     "seed": {
+      "type": "integer",
+      "title": "Seed",
+      "default": 0
+     },
+     "certificates": {
+      "type": "boolean",
+      "title": "Certificates",
+      "default": false
+     }
+    },
+    "type": "object",
+    "required": [
+     "constraint"
+    ],
+    "title": "BatchRequest",
+    "description": "Several distinct valid samples (synthetic test data)."
+   },
+   "BatchResponse": {
+    "properties": {
+     "samples": {
+      "items": {
+       "$ref": "#/components/schemas/BatchSample"
+      },
+      "type": "array",
+      "title": "Samples"
+     },
+     "requested": {
+      "type": "integer",
+      "title": "Requested"
+     },
+     "attempts": {
+      "type": "integer",
+      "title": "Attempts"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     }
+    },
+    "type": "object",
+    "required": [
+     "samples",
+     "requested",
+     "attempts"
+    ],
+    "title": "BatchResponse",
+    "description": "Distinct samples that ended in an accepting state."
+   },
+   "BatchSample": {
+    "properties": {
+     "text": {
+      "type": "string",
+      "title": "Text"
+     },
+     "seed": {
+      "type": "integer",
+      "title": "Seed"
+     },
+     "cost_bits": {
+      "type": "number",
+      "title": "Cost Bits"
+     },
+     "certificate": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Certificate"
+     }
+    },
+    "type": "object",
+    "required": [
+     "text",
+     "seed",
+     "cost_bits"
+    ],
+    "title": "BatchSample",
+    "description": "One valid sample."
+   },
+   "BuiltinsResponse": {
+    "properties": {
+     "builtins": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "type": "object",
+      "title": "Builtins"
+     }
+    },
+    "type": "object",
+    "required": [
+     "builtins"
+    ],
+    "title": "BuiltinsResponse",
+    "description": "Names usable in expressions."
+   },
+   "CertificateVerifyRequest": {
+    "properties": {
+     "certificate": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Certificate"
+     }
+    },
+    "type": "object",
+    "required": [
+     "certificate"
+    ],
+    "title": "CertificateVerifyRequest",
+    "description": "Certificate to check (as returned by generate / membership)."
+   },
+   "CertificateVerifyResponse": {
+    "properties": {
+     "valid": {
+      "type": "boolean",
+      "title": "Valid"
+     },
+     "accepted": {
+      "type": "boolean",
+      "title": "Accepted"
+     },
+     "reason": {
+      "type": "string",
+      "title": "Reason"
+     },
+     "automaton_states": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Automaton States"
+     }
+    },
+    "type": "object",
+    "required": [
+     "valid",
+     "accepted",
+     "reason"
+    ],
+    "title": "CertificateVerifyResponse",
+    "description": "Truthful? In the language?"
+   },
+   "CompileRequest": {
+    "properties": {
+     "regex": {
+      "type": "string",
+      "title": "Regex",
+      "examples": [
+       "(a|b)*abb"
+      ]
+     }
+    },
+    "type": "object",
+    "required": [
+     "regex"
+    ],
+    "title": "CompileRequest",
+    "description": "Regex to compile."
+   },
+   "CompileResponse": {
+    "properties": {
+     "regex": {
+      "type": "string",
+      "title": "Regex"
+     },
+     "ast": {
+      "type": "string",
+      "title": "Ast"
+     },
+     "alphabet": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Alphabet"
+     },
+     "nfa": {
+      "$ref": "#/components/schemas/AutomatonView"
+     },
+     "dfa": {
+      "$ref": "#/components/schemas/AutomatonView"
+     },
+     "min_dfa": {
+      "$ref": "#/components/schemas/AutomatonView"
+     },
+     "elapsed_ms": {
+      "type": "number",
+      "title": "Elapsed Ms"
+     }
+    },
+    "type": "object",
+    "required": [
+     "regex",
+     "ast",
+     "alphabet",
+     "nfa",
+     "dfa",
+     "min_dfa",
+     "elapsed_ms"
+    ],
+    "title": "CompileResponse",
+    "description": "The whole pipeline: AST, \u03b5-NFA, DFA, minimal DFA."
+   },
+   "Constraint": {
+    "properties": {
+     "kind": {
+      "type": "string",
+      "enum": [
+       "regex",
+       "expression"
+      ],
+      "title": "Kind",
+      "description": "'regex' = one regular expression; 'expression' = constraint algebra, e.g. email & !contains(/spam/)",
+      "default": "regex"
+     },
+     "text": {
+      "type": "string",
+      "title": "Text",
+      "examples": [
+       "[0-9]{4}-[0-9]{2}-[0-9]{2}"
+      ]
+     },
+     "names": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "type": "object",
+      "title": "Names",
+      "description": "extra named constraints (name -> regex)"
+     }
+    },
+    "type": "object",
+    "required": [
+     "text"
+    ],
+    "title": "Constraint",
+    "description": "What the text must look like: a regex, or an expression in the constraint algebra."
+   },
+   "CountRequest": {
+    "properties": {
+     "constraint": {
+      "$ref": "#/components/schemas/Constraint"
+     },
+     "max_length": {
+      "type": "integer",
+      "minimum": 0.0,
+      "title": "Max Length",
+      "default": 12
+     },
+     "sample_length": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sample Length"
+     },
+     "samples": {
+      "type": "integer",
+      "maximum": 100.0,
+      "minimum": 0.0,
+      "title": "Samples",
+      "default": 5
+     },
+     "seed": {
+      "type": "integer",
+      "title": "Seed",
+      "default": 0
+     }
+    },
+    "type": "object",
+    "required": [
+     "constraint"
+    ],
+    "title": "CountRequest",
+    "description": "How many strings, and uniform samples."
+   },
+   "CountResponse": {
+    "properties": {
+     "counts": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Counts"
+     },
+     "finite": {
+      "type": "boolean",
+      "title": "Finite"
+     },
+     "size": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Size"
+     },
+     "sample_length": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sample Length"
+     },
+     "samples": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Samples"
+     },
+     "shortest": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Shortest"
+     }
+    },
+    "type": "object",
+    "required": [
+     "counts",
+     "finite",
+     "size",
+     "sample_length",
+     "samples",
+     "shortest"
+    ],
+    "title": "CountResponse",
+    "description": "Counts per length (dynamic programming over the DFA) and exact uniform samples."
+   },
+   "DiffRequest": {
+    "properties": {
+     "old": {
+      "$ref": "#/components/schemas/Constraint"
+     },
+     "new": {
+      "$ref": "#/components/schemas/Constraint"
+     },
+     "examples": {
+      "type": "integer",
+      "maximum": 50.0,
+      "minimum": 1.0,
+      "title": "Examples",
+      "default": 5
+     }
+    },
+    "type": "object",
+    "required": [
+     "old",
+     "new"
+    ],
+    "title": "DiffRequest",
+    "description": "Compare an old validator with a new one."
+   },
+   "DiffResponse": {
+    "properties": {
+     "relation": {
+      "type": "string",
+      "enum": [
+       "equal",
+       "new_stricter",
+       "new_looser",
+       "overlap",
+       "disjoint"
+      ],
+      "title": "Relation"
+     },
+     "summary": {
+      "type": "string",
+      "title": "Summary"
+     },
+     "only_old": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Only Old",
+      "description": "accepted by the OLD validator but rejected by the NEW one"
+     },
+     "only_new": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Only New",
+      "description": "accepted by the NEW validator but rejected by the OLD one"
+     },
+     "both": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Both"
+     },
+     "states_old": {
+      "type": "integer",
+      "title": "States Old"
+     },
+     "states_new": {
+      "type": "integer",
+      "title": "States New"
+     }
+    },
+    "type": "object",
+    "required": [
+     "relation",
+     "summary",
+     "only_old",
+     "only_new",
+     "both",
+     "states_old",
+     "states_new"
+    ],
+    "title": "DiffResponse",
+    "description": "How the language changed, with witnesses."
+   },
+   "EquivalenceRequest": {
+    "properties": {
+     "a": {
+      "$ref": "#/components/schemas/Constraint"
+     },
+     "b": {
+      "$ref": "#/components/schemas/Constraint"
+     }
+    },
+    "type": "object",
+    "required": [
+     "a",
+     "b"
+    ],
+    "title": "EquivalenceRequest",
+    "description": "Do two constraints define the same language?"
+   },
+   "EquivalenceResponse": {
+    "properties": {
+     "equivalent": {
+      "type": "boolean",
+      "title": "Equivalent"
+     },
+     "counterexample": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Counterexample"
+     },
+     "accepted_by_a": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Accepted By A"
+     },
+     "accepted_by_b": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Accepted By B"
+     },
+     "states_a": {
+      "type": "integer",
+      "title": "States A"
+     },
+     "states_b": {
+      "type": "integer",
+      "title": "States B"
+     }
+    },
+    "type": "object",
+    "required": [
+     "equivalent",
+     "states_a",
+     "states_b"
+    ],
+    "title": "EquivalenceResponse",
+    "description": "Equivalent, or a shortest counterexample with who accepts it."
+   },
+   "GenerateRequest": {
+    "properties": {
+     "prompt": {
+      "type": "string",
+      "title": "Prompt",
+      "default": ""
+     },
+     "max_tokens": {
+      "type": "integer",
+      "maximum": 1000.0,
+      "minimum": 1.0,
+      "title": "Max Tokens",
+      "default": 40
+     },
+     "top_k": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 200.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Top K",
+      "description": "null/1 = greedy"
+     },
+     "temperature": {
+      "type": "number",
+      "maximum": 5.0,
+      "exclusiveMinimum": 0.0,
+      "title": "Temperature",
+      "default": 1.0
+     },
+     "seed": {
+      "type": "integer",
+      "title": "Seed",
+      "default": 0
+     },
+     "compare": {
+      "type": "boolean",
+      "title": "Compare",
+      "description": "also stream an unconstrained run first, for comparison",
+      "default": false
+     },
+     "certificate": {
+      "type": "boolean",
+      "title": "Certificate",
+      "default": true
+     },
+     "constraint": {
+      "$ref": "#/components/schemas/Constraint"
+     }
+    },
+    "type": "object",
+    "required": [
+     "constraint"
+    ],
+    "title": "GenerateRequest",
+    "description": "Constrained generation with a regex / expression."
+   },
+   "HTTPValidationError": {
+    "properties": {
+     "detail": {
+      "items": {
+       "$ref": "#/components/schemas/ValidationError"
+      },
+      "type": "array",
+      "title": "Detail"
+     }
+    },
+    "type": "object",
+    "title": "HTTPValidationError"
+   },
+   "HealthResponse": {
+    "properties": {
+     "status": {
+      "type": "string",
+      "const": "ok",
+      "title": "Status"
+     },
+     "version": {
+      "type": "string",
+      "title": "Version"
+     },
+     "engine": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Engine"
+     }
+    },
+    "type": "object",
+    "required": [
+     "status",
+     "version",
+     "engine"
+    ],
+    "title": "HealthResponse",
+    "description": "Liveness and model state."
+   },
+   "JsonGenerateRequest": {
+    "properties": {
+     "prompt": {
+      "type": "string",
+      "title": "Prompt",
+      "default": ""
+     },
+     "max_tokens": {
+      "type": "integer",
+      "maximum": 1000.0,
+      "minimum": 1.0,
+      "title": "Max Tokens",
+      "default": 60
+     },
+     "top_k": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 200.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Top K",
+      "description": "null/1 = greedy"
+     },
+     "temperature": {
+      "type": "number",
+      "maximum": 5.0,
+      "exclusiveMinimum": 0.0,
+      "title": "Temperature",
+      "default": 1.0
+     },
+     "seed": {
+      "type": "integer",
+      "title": "Seed",
+      "default": 0
+     },
+     "compare": {
+      "type": "boolean",
+      "title": "Compare",
+      "description": "also stream an unconstrained run first, for comparison",
+      "default": false
+     },
+     "certificate": {
+      "type": "boolean",
+      "title": "Certificate",
+      "default": true
+     },
+     "schema": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Schema",
+      "description": "mini JSON schema; null = any JSON object/array"
+     },
+     "top_n": {
+      "type": "integer",
+      "maximum": 2000.0,
+      "minimum": 1.0,
+      "title": "Top N",
+      "default": 100
+     }
+    },
+    "type": "object",
+    "title": "JsonGenerateRequest",
+    "description": "Constrained generation with the JSON PDA or a schema."
+   },
+   "LearnMinimizeResponse": {
+    "properties": {
+     "regex": {
+      "type": "string",
+      "title": "Regex"
+     },
+     "dfa": {
+      "$ref": "#/components/schemas/AutomatonView"
+     },
+     "rounds": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "array",
+      "title": "Rounds"
+     },
+     "classes": {
+      "items": {
+       "items": {
+        "type": "integer"
+       },
+       "type": "array"
+      },
+      "type": "array",
+      "title": "Classes"
+     },
+     "min_dfa": {
+      "$ref": "#/components/schemas/AutomatonView"
+     }
+    },
+    "type": "object",
+    "required": [
+     "regex",
+     "dfa",
+     "rounds",
+     "classes",
+     "min_dfa"
+    ],
+    "title": "LearnMinimizeResponse",
+    "description": "Everything the step player needs for table filling."
+   },
+   "LearnSubsetResponse": {
+    "properties": {
+     "regex": {
+      "type": "string",
+      "title": "Regex"
+     },
+     "nfa": {
+      "$ref": "#/components/schemas/AutomatonView"
+     },
+     "steps": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "array",
+      "title": "Steps"
+     },
+     "dfa": {
+      "$ref": "#/components/schemas/AutomatonView"
+     }
+    },
+    "type": "object",
+    "required": [
+     "regex",
+     "nfa",
+     "steps",
+     "dfa"
+    ],
+    "title": "LearnSubsetResponse",
+    "description": "Everything the step player needs for subset construction."
+   },
+   "MembershipRequest": {
+    "properties": {
+     "constraint": {
+      "$ref": "#/components/schemas/Constraint"
+     },
+     "text": {
+      "type": "string",
+      "title": "Text"
+     }
+    },
+    "type": "object",
+    "required": [
+     "constraint",
+     "text"
+    ],
+    "title": "MembershipRequest",
+    "description": "Run a string through a constraint's DFA."
+   },
+   "MembershipResponse": {
+    "properties": {
+     "accepted": {
+      "type": "boolean",
+      "title": "Accepted"
+     },
+     "path": {
+      "items": {
+       "$ref": "#/components/schemas/PathStep"
+      },
+      "type": "array",
+      "title": "Path"
+     },
+     "start": {
+      "type": "integer",
+      "title": "Start"
+     },
+     "final_state": {
+      "type": "integer",
+      "title": "Final State"
+     },
+     "doomed_at": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Doomed At",
+      "description": "index of the first character after which no completion exists"
+     },
+     "viable_prefix": {
+      "type": "boolean",
+      "title": "Viable Prefix",
+      "description": "could the text still be extended into a match?"
+     },
+     "certificate": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Certificate"
+     }
+    },
+    "type": "object",
+    "required": [
+     "accepted",
+     "path",
+     "start",
+     "final_state",
+     "viable_prefix",
+     "certificate"
+    ],
+    "title": "MembershipResponse",
+    "description": "Verdict plus the state path (this is the certificate's content)."
+   },
+   "PathStep": {
+    "properties": {
+     "index": {
+      "type": "integer",
+      "title": "Index"
+     },
+     "char": {
+      "type": "string",
+      "title": "Char"
+     },
+     "source": {
+      "type": "integer",
+      "title": "Source"
+     },
+     "target": {
+      "type": "integer",
+      "title": "Target"
+     },
+     "live": {
+      "type": "boolean",
+      "title": "Live"
+     }
+    },
+    "type": "object",
+    "required": [
+     "index",
+     "char",
+     "source",
+     "target",
+     "live"
+    ],
+    "title": "PathStep",
+    "description": "\u03b4(from, char) = to."
+   },
+   "TestCaseOut": {
+    "properties": {
+     "text": {
+      "type": "string",
+      "title": "Text"
+     },
+     "expected": {
+      "type": "boolean",
+      "title": "Expected"
+     },
+     "kind": {
+      "type": "string",
+      "title": "Kind"
+     },
+     "reason": {
+      "type": "string",
+      "title": "Reason"
+     }
+    },
+    "type": "object",
+    "required": [
+     "text",
+     "expected",
+     "kind",
+     "reason"
+    ],
+    "title": "TestCaseOut",
+    "description": "One generated case."
+   },
+   "TestgenRequest": {
+    "properties": {
+     "constraint": {
+      "$ref": "#/components/schemas/Constraint"
+     },
+     "format": {
+      "type": "string",
+      "enum": [
+       "json",
+       "csv",
+       "pytest"
+      ],
+      "title": "Format",
+      "default": "json"
+     },
+     "max_cases": {
+      "type": "integer",
+      "minimum": 1.0,
+      "title": "Max Cases",
+      "default": 500
+     }
+    },
+    "type": "object",
+    "required": [
+     "constraint"
+    ],
+    "title": "TestgenRequest",
+    "description": "Generate a test suite for a validator."
+   },
+   "TestgenResponse": {
+    "properties": {
+     "cases": {
+      "items": {
+       "$ref": "#/components/schemas/TestCaseOut"
+      },
+      "type": "array",
+      "title": "Cases"
+     },
+     "counts": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "type": "object",
+      "title": "Counts"
+     },
+     "coverage": {
+      "additionalProperties": {
+       "anyOf": [
+        {
+         "type": "number"
+        },
+        {
+         "type": "integer"
+        }
+       ]
+      },
+      "type": "object",
+      "title": "Coverage"
+     },
+     "truncated": {
+      "type": "boolean",
+      "title": "Truncated"
+     },
+     "csv": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Csv"
+     },
+     "pytest": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Pytest"
+     },
+     "pattern": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Pattern",
+      "description": "the regex used for the pytest export"
+     }
+    },
+    "type": "object",
+    "required": [
+     "cases",
+     "counts",
+     "coverage",
+     "truncated"
+    ],
+    "title": "TestgenResponse",
+    "description": "The suite with its coverage."
+   },
+   "Transition": {
+    "properties": {
+     "source": {
+      "type": "integer",
+      "title": "Source"
+     },
+     "target": {
+      "type": "integer",
+      "title": "Target"
+     },
+     "label": {
+      "type": "string",
+      "title": "Label"
+     }
+    },
+    "type": "object",
+    "required": [
+     "source",
+     "target",
+     "label"
+    ],
+    "title": "Transition",
+    "description": "One drawn edge: all symbols between the same two states are merged into one label."
+   },
+   "ValidationError": {
+    "properties": {
+     "loc": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        }
+       ]
+      },
+      "type": "array",
+      "title": "Location"
+     },
+     "msg": {
+      "type": "string",
+      "title": "Message"
+     },
+     "type": {
+      "type": "string",
+      "title": "Error Type"
+     },
+     "input": {
+      "title": "Input"
+     },
+     "ctx": {
+      "type": "object",
+      "title": "Context"
+     }
+    },
+    "type": "object",
+    "required": [
+     "loc",
+     "msg",
+     "type"
+    ],
+    "title": "ValidationError"
+   }
+  }
+ }
+}

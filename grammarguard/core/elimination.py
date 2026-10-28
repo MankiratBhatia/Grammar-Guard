@@ -118,33 +118,11 @@ def star(a: rp.Node | None) -> rp.Node:
 # ------------------------------------------------------------- printer
 
 _SPECIAL = set("|*+?()[]{}\\.^$")
-_CLASS_SPECIAL = set("]\\-^[")
 
 
 def _esc(ch: str) -> str:
     """Escape a character that has a meaning in our regex syntax."""
     return "\\" + ch if ch in _SPECIAL else ch
-
-
-def _class_text(chars: frozenset[str]) -> str:
-    """Print a class with ranges, e.g. [0-9a-f_]."""
-    codes = sorted(ord(c) for c in chars)
-    parts, i = [], 0
-    while i < len(codes):
-        j = i
-        while j + 1 < len(codes) and codes[j + 1] == codes[j] + 1:
-            j += 1
-
-        def e(c: int) -> str:
-            ch = chr(c)
-            return "\\" + ch if ch in _CLASS_SPECIAL else ch
-
-        if j - i >= 2:
-            parts.append(f"{e(codes[i])}-{e(codes[j])}")
-        else:
-            parts.extend(e(c) for c in codes[i : j + 1])
-        i = j + 1
-    return "[" + "".join(parts) + "]"
 
 
 def to_regex(node: rp.Node, prec: int = 0) -> str:
@@ -158,7 +136,7 @@ def to_regex(node: rp.Node, prec: int = 0) -> str:
     if isinstance(node, rp.Literal):
         return _esc(node.char)
     if isinstance(node, rp.CharClass):
-        return _class_text(node.chars)
+        return rp.class_text(node.chars)
     if isinstance(node, rp.Star):
         return _postfix(node.child) + "*"
     if isinstance(node, rp.Union):

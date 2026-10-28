@@ -538,3 +538,22 @@ def test_real_model_disconnect_frees_the_engine():
         while engine.busy and time.time() < deadline:
             time.sleep(0.1)
         assert not engine.busy
+
+
+# ---------------------------------------------------------------- serving the built frontend
+
+
+def test_built_frontend_is_served_without_shadowing_the_api(tmp_path):
+    """With a frontend build present, / serves it, assets are served, and /api and /docs still work."""
+    (tmp_path / "index.html").write_text("<!doctype html><title>GrammarGuard</title><div id=root></div>")
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "assets" / "app.js").write_text("console.log('hi')")
+    settings = Settings(warm_start=False, frontend_dir=tmp_path)
+    with TestClient(create_app(settings, FakeEngine())) as c:
+        home = c.get("/")
+        assert home.status_code == 200 and "text/html" in home.headers["content-type"] and "GrammarGuard" in home.text
+        assert c.get("/assets/app.js").text == "console.log('hi')"
+        assert c.get("/assets/missing.js").status_code == 404
+        assert c.get(API + "/system/health").json()["status"] == "ok"
+        assert c.get("/docs").status_code == 200 and c.get("/openapi.json").status_code == 200
+        assert c.post(API + "/compile", json={"regex": "ab"}).status_code == 200
