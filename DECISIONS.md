@@ -180,3 +180,42 @@ Ambiguities in the spec and the (simplest) choice taken for each.
    threads). `CancelToken` is polled between tokens; closing a half-consumed generator releases the lock.
 8. **Schema mode** needed no new generator: `generate_json(pda=PDA(schema_to_grammar(schema)))`.
 9. **Not done in this phase:** the lazy index is not persisted to disk.
+
+## 2.0 Phase D — FastAPI backend
+
+1. **16 endpoints under `/api/v1`**, documented in the generated OpenAPI (`/docs`): compile, membership,
+   certificate/verify, builtins, algebra, equivalence, count, validators/{diff,testgen}, learn/{subset,minimize},
+   generate, generate/json, generate/batch, system/{health,models}. Settings come from `GRAMMARGUARD_*`
+   environment variables (`api/settings.py`).
+2. **One error envelope** `{"error": {code, message, position, details}}` for every failure. Codes:
+   `regex_syntax`, `algebra`, `schema`, `limit_exceeded`, `not_expressible`, `validation`, `internal`.
+   User mistakes are 422 with a character position where one exists; only genuine bugs are 500.
+3. **Counts of strings are JSON strings**, never numbers: a policy language had 3.6 × 10^45 strings and
+   JavaScript numbers lose precision above 2^53.
+4. **Streaming = Server-Sent Events from a worker thread.** The model is blocking CPU code, so each
+   request runs in its own thread feeding an asyncio queue. If the client disconnects, the response is
+   cancelled, a `CancelToken` is set, and the worker stops at the next token and releases the model lock.
+   A timer stops runs longer than `generation_timeout` and reports `stop_reason: "timeout"`. Request
+   validation (bad regex, limits) happens BEFORE the stream opens, so errors are normal HTTP 422s.
+5. **Limits protect a shared server**: regex/expression/text/prompt lengths, `max_states`, `max_tokens`,
+   batch size, count lengths, and a cap on unminimized DFA size. The cap needed new core support:
+   `subset_construction(max_states=)` and `product(limit=)` raise `StateLimitError`.
+   `(a|b)*a(a|b){20}` (needs 2^21 states) is refused in 0.03 s instead of hanging.
+6. **Never ask for a regex from a big automaton.** `/algebra` converts the result back to a regex (state
+   elimination) only for automata of at most 40 states, and elimination itself has a size budget.
+   Trying it on a 649-state policy took 13.7 s even to give up.
+7. **Bug found and fixed during this phase: `shortest_strings` could exhaust memory.** It was a BFS over
+   all viable prefixes; for a dense language whose shortest match has length 8 over a 40-symbol alphabet
+   that is about 40^7 queue entries. It crashed the WSL VM several times (the API's example-string
+   feature exposed it; the earlier tests only used sparse languages). It now uses a feasibility table
+   (`can[r]` = states that reach acceptance in exactly r more symbols) plus depth-first search that only
+   follows guaranteed branches: 4.5 ms on the same input. Regression tests include a brute-force
+   comparison of the output order and a dense-language timing test.
+8. **Tests use a `FakeEngine`** (same interface as `Engine`, no model) so the SSE protocol, queueing,
+   timeout, disconnect and error paths are fast and deterministic. Two tests drive the real GPT-2.
+   A review of my own tests found two weak ones (a disconnect test that passed without generating
+   anything because the fake language was too long for the example finder); both were tightened.
+9. **Certificates are self-contained**: the stored constraint is an algebra expression (a plain regex is
+   wrapped as `/.../`) plus any user-defined `names`, so `/certificate/verify` needs only the certificate.
+10. **Not done yet:** the React frontend (Phase E); `python -m grammarguard.api` serves the API and will
+    also serve `frontend/dist` once it exists.

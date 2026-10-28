@@ -121,9 +121,10 @@ class Result:
 class _Parser:
     """Recursive-descent parser that evaluates as it parses (each rule returns a DFA)."""
 
-    def __init__(self, text: str, names: dict[str, str], max_states: int):
+    def __init__(self, text: str, names: dict[str, str], max_states: int, regex_limit: int | None = None):
         """Expression text, the name -> regex library, and a state cap."""
         self.text, self.pos, self.names, self.max_states = text, 0, names, max_states
+        self.regex_limit = regex_limit or max_states * 10
         self.steps: list[Step] = []
 
     # -- lexical helpers
@@ -162,6 +163,13 @@ class _Parser:
             raise AlgebraError("expected a number", start)
         return int(self.text[start : self.pos])
 
+    def product(self, left: DFA, right: DFA, mode: str, start: int) -> DFA:
+        """Product construction with a cap on the intermediate size (before minimization)."""
+        try:
+            return ops.product(left, right, mode, limit=self.max_states * 20)
+        except ops.StateLimitError as e:
+            raise AlgebraError(str(e), start) from None
+
     def record(self, start: int, operation: str, dfa: DFA) -> DFA:
         """Log a step and enforce the state cap."""
         if dfa.num_states() > self.max_states:
@@ -183,7 +191,7 @@ class _Parser:
         left = self.term()
         while self.peek() == "|":
             self.pos += 1
-            left = self.record(start, "union (product)", ops.minimize(ops.product(left, self.term(), "union")))
+            left = self.record(start, "union (product)", ops.minimize(self.product(left, self.term(), "union", start)))
         return left
 
     def term(self) -> DFA:
@@ -197,7 +205,7 @@ class _Parser:
             mode, label = (
                 ("intersection", "intersection (product)") if op == "&" else ("difference", "difference (product)")
             )
-            left = self.record(start, label, ops.minimize(ops.product(left, right, mode)))
+            left = self.record(start, label, ops.minimize(self.product(left, right, mode, start)))
         return left
 
     def unary(self) -> DFA:
@@ -240,9 +248,11 @@ class _Parser:
         body = self.text[self.pos : i]
         self.pos = i + 1
         try:
-            return ops.regex_to_dfa(body)
+            return ops.regex_to_dfa(body, max_states=self.regex_limit)
         except RegexSyntaxError as e:
             raise AlgebraError(f"bad regex /{body}/: {e}", start) from None
+        except ops.StateLimitError as e:
+            raise AlgebraError(f"regex /{body}/ is too complex: {e}", start) from None
 
     def lookup(self, name: str, pos: int) -> DFA:
         """A named constraint, or the special name 'any' (one character)."""
@@ -251,9 +261,11 @@ class _Parser:
         if name not in self.names:
             raise AlgebraError(f"unknown name {name!r}", pos)
         try:
-            return ops.regex_to_dfa(self.names[name])
+            return ops.regex_to_dfa(self.names[name], max_states=self.regex_limit)
         except RegexSyntaxError as e:
             raise AlgebraError(f"bad regex for {name!r}: {e}", pos) from None
+        except ops.StateLimitError as e:
+            raise AlgebraError(f"regex for {name!r} is too complex: {e}", pos) from None
 
     def args(self) -> list[DFA]:
         """'(' expr (',' expr)* ')'"""

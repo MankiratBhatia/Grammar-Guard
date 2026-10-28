@@ -34,6 +34,16 @@ from typing import Any
 from grammarguard.core.nfa import NFA, OTHER, other_char, regex_to_nfa
 
 
+class StateLimitError(ValueError):
+    """A construction would create more states than the caller allows (subset construction can
+    need 2^n states in the worst case, e.g. (a|b)*a(a|b){20}; services must be able to refuse)."""
+
+    def __init__(self, limit: int, what: str):
+        """Remember the limit and which construction hit it."""
+        super().__init__(f"{what} would need more than {limit} states")
+        self.limit = limit
+
+
 @dataclass
 class DFA:
     """A complete DFA (Q, Sigma + {OTHER}, delta, q0, F)."""
@@ -169,7 +179,7 @@ def _fmt_set(s) -> str:
     return "{" + ",".join(str(x) for x in sorted(s)) + "}"
 
 
-def subset_construction(nfa: NFA, trace: list[dict[str, Any]] | None = None) -> DFA:
+def subset_construction(nfa: NFA, trace: list[dict[str, Any]] | None = None, max_states: int | None = None) -> DFA:
     """Subset construction: each DFA state = epsilon-closure of a set of NFA states.
 
         q0'          = E({q0})
@@ -182,6 +192,7 @@ def subset_construction(nfa: NFA, trace: list[dict[str, Any]] | None = None) -> 
 
     If `trace` is a list, one record per (subset, symbol) step is appended to it
     (used by the Learn page; it is the real algorithm, not a re-implementation).
+    If `max_states` is given, raises StateLimitError instead of building a larger DFA.
     """
     symbols = sorted(nfa.alphabet) + [OTHER]
     start_set = nfa.epsilon_closure({nfa.start})
@@ -195,6 +206,8 @@ def subset_construction(nfa: NFA, trace: list[dict[str, Any]] | None = None) -> 
             U = nfa.epsilon_closure(moved)
             is_new = U not in ids
             if is_new:
+                if max_states is not None and len(ids) >= max_states:
+                    raise StateLimitError(max_states, "subset construction")
                 ids[U] = len(ids)
                 worklist.append(U)
             delta[(ids[S], a)] = ids[U]
@@ -329,7 +342,7 @@ PRODUCT_MODES = {
 }
 
 
-def product(d1: DFA, d2: DFA, mode: str = "intersection") -> DFA:
+def product(d1: DFA, d2: DFA, mode: str = "intersection", limit: int | None = None) -> DFA:
     """Product construction: run d1 and d2 in parallel on the same input.
 
         Q = Q1 x Q2,  q0 = (q01, q02),  delta((p,q), a) = (delta1(p,a), delta2(q,a))
@@ -338,7 +351,8 @@ def product(d1: DFA, d2: DFA, mode: str = "intersection") -> DFA:
 
     This is the proof that regular languages are closed under these operations.
     Sigma = Sigma1 U Sigma2; a character missing from one DFA's Sigma follows
-    that DFA's OTHER edge. Only reachable pairs are built.
+    that DFA's OTHER edge. Only reachable pairs are built; `limit` caps how many
+    (raises StateLimitError).
     """
     accepting = PRODUCT_MODES[mode]
     alphabet = d1.alphabet | d2.alphabet
@@ -353,6 +367,8 @@ def product(d1: DFA, d2: DFA, mode: str = "intersection") -> DFA:
             nxt = (d1.step(p, a), d2.step(q, a))
             delta[((p, q), a)] = nxt
             if nxt not in seen:
+                if limit is not None and len(seen) >= limit:
+                    raise StateLimitError(limit, "product construction")
                 seen.add(nxt)
                 queue.append(nxt)
     accept = {pq for pq in seen if accepting(pq[0] in d1.accept, pq[1] in d2.accept)}
@@ -441,7 +457,7 @@ def equivalent(d1: DFA, d2: DFA) -> tuple[bool, str | None]:
     return (witness is None, witness)
 
 
-def regex_to_dfa(text: str, minimal: bool = True) -> DFA:
+def regex_to_dfa(text: str, minimal: bool = True, max_states: int | None = None) -> DFA:
     """Full pipeline: regex -> AST -> epsilon-NFA -> DFA (-> minimal DFA)."""
-    dfa = subset_construction(regex_to_nfa(text))
+    dfa = subset_construction(regex_to_nfa(text), max_states=max_states)
     return minimize(dfa) if minimal else dfa

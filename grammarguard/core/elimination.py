@@ -210,8 +210,21 @@ def _postfix(node: rp.Node) -> str:
 # ------------------------------------------------------------- the algorithm
 
 
-def dfa_to_regex_ast(dfa: DFA) -> rp.Node | None:
-    """State elimination on the useful part of `dfa`. None means L = empty set."""
+def node_count(node: rp.Node) -> int:
+    """Number of AST nodes (a measure of how big a regex is)."""
+    if isinstance(node, (rp.Union, rp.Concat)):
+        return 1 + node_count(node.left) + node_count(node.right)
+    if isinstance(node, rp.Star):
+        return 1 + node_count(node.child)
+    return 1
+
+
+def dfa_to_regex_ast(dfa: DFA, max_nodes: int | None = 20_000) -> rp.Node | None:
+    """State elimination on the useful part of `dfa`. None means L = empty set.
+
+    The regex can grow exponentially with the number of states, so any edge label
+    larger than `max_nodes` AST nodes aborts with NotExpressibleError (None = no limit).
+    """
     useful = dfa.reachable_states() & dfa.live_states()
     if dfa.start not in useful:
         return None
@@ -224,6 +237,8 @@ def dfa_to_regex_ast(dfa: DFA) -> rp.Node | None:
             return
         new = union(R.get((p, r)), label)
         assert new is not None
+        if max_nodes is not None and node_count(new) > max_nodes:
+            raise NotExpressibleError(f"an equivalent regex would be larger than {max_nodes} nodes")
         R[(p, r)] = new
 
     for q in useful:
@@ -266,10 +281,10 @@ def dfa_to_regex_ast(dfa: DFA) -> rp.Node | None:
     return R.get((S, F))
 
 
-def dfa_to_regex(dfa: DFA) -> str:
+def dfa_to_regex(dfa: DFA, max_nodes: int | None = 20_000) -> str:
     """The regex for L(dfa) as text in our syntax. The empty language prints as '[]'
     is not valid, so we raise NotExpressibleError for it instead."""
-    ast = dfa_to_regex_ast(dfa)
+    ast = dfa_to_regex_ast(dfa, max_nodes)
     if ast is None:
         raise NotExpressibleError("the language is empty; our regex syntax has no symbol for ∅")
     return to_regex(ast)

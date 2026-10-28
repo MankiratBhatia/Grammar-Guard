@@ -7,6 +7,7 @@ constraint algebra, minimization methods, schema compiler.
 import itertools
 import json
 import re
+import time
 
 import pytest
 from hypothesis import given, settings
@@ -28,7 +29,7 @@ from grammarguard.core.dfa import (
     subset_construction,
 )
 from grammarguard.core.elimination import NotExpressibleError, dfa_to_regex
-from grammarguard.core.nfa import regex_to_nfa
+from grammarguard.core.nfa import other_char, regex_to_nfa
 from grammarguard.core.pda import PDA
 from grammarguard.core.schema import SchemaError, schema_to_grammar
 from tests.test_regular import PATTERNS, regex_strategy
@@ -429,3 +430,43 @@ def test_schema_errors(bad):
     """Unsupported or malformed schemas raise SchemaError."""
     with pytest.raises((SchemaError, GrammarError)):
         schema_to_grammar(bad)
+
+
+# ---------------------------------------------------------------- shortest_strings regression
+
+
+def test_shortest_strings_dense_language_does_not_blow_up():
+    """Regression: a BFS over prefixes queued ~|alphabet|^(shortest length - 1) entries for a dense
+    language such as an email policy (shortest match = 8 chars), exhausting memory. The feasibility-table
+    DFS must answer instantly and every result must be a genuine match."""
+    d = evaluate("email & !contains(/spam/) & length(8, 30)").dfa
+    start = time.perf_counter()
+    out = counting.shortest_strings(d, 8)
+    assert time.perf_counter() - start < 1.0
+    assert len(out) == 8 and all(d.accepts(s) for s in out) and len({len(s) for s in out}) == 1 and len(out[0]) == 8
+
+
+@pytest.mark.parametrize("pattern", ["(a|b)*abb", "a*b?", "[ab]{2,3}", "(ab|a)*", "a+|b+", "", "x(y|z){0,2}"])
+@pytest.mark.parametrize("include_other", [False, True])
+def test_shortest_strings_equals_brute_force_shortlex(pattern, include_other):
+    """The k shortest strings are exactly the first k accepted strings in (length, symbol order) order."""
+    d = regex_to_dfa(pattern)
+    symbols = sorted(d.alphabet) + ([other_char(d.alphabet)] if include_other else [])
+    expected = []
+    for n in range(9):  # sparse languages (a+|b+ has 2 strings per length) need lengths up to 8 for 10 strings
+        for t in itertools.product(symbols, repeat=n):
+            s = "".join(t)
+            if d.accepts(s):
+                expected.append(s)
+        if len(expected) >= 10:
+            break
+    assert counting.shortest_strings(d, 10, include_other=include_other) == expected[:10]
+
+
+def test_shortest_strings_edge_cases():
+    """Empty language, k = 0, finite language smaller than k, and the max_len cut-off."""
+    empty = product(regex_to_dfa("a"), regex_to_dfa("b"), "intersection")
+    assert counting.shortest_strings(empty, 5) == []
+    assert counting.shortest_strings(regex_to_dfa("ab"), 0) == []
+    assert counting.shortest_strings(regex_to_dfa("a|bb"), 10) == ["a", "bb"]
+    assert counting.shortest_strings(regex_to_dfa("a{10}"), 3, max_len=5) == []

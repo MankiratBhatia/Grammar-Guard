@@ -16,7 +16,6 @@ with k symbols left, choose a with probability N(delta(q,a), k-1) / N(q, k).
 from __future__ import annotations
 
 import random
-from collections import deque
 
 from grammarguard.core.dfa import DFA
 from grammarguard.core.nfa import OTHER, other_char
@@ -89,25 +88,45 @@ def sample_uniform(dfa: DFA, length: int, k: int = 1, seed: int = 0) -> list[str
 def shortest_strings(dfa: DFA, k: int, max_len: int = 64, include_other: bool = True) -> list[str]:
     """The first k accepted strings in shortlex order (by length, then by symbol order).
 
-    BFS over (state, prefix) pairs, never entering non-live states, so every
-    branch explored can still reach acceptance. OTHER is shown as a concrete
-    character outside Sigma.
+    OTHER is shown as a concrete character outside Sigma.
+
+    A plain BFS over prefixes is exponential: for a dense language whose shortest
+    match has length 8 over a 40-symbol alphabet it would queue ~40^7 prefixes.
+    Instead we use a feasibility table
+        can[r] = { q : some string of length exactly r leads from q to an accepting state }
+    built by dynamic programming (can[0] = F; q is in can[r] if some symbol leads
+    into can[r-1]). For each length L = 0, 1, 2, ... we enumerate the strings of
+    length exactly L by depth-first search in symbol order, entering a state
+    only if it is in can[remaining]. Every branch followed therefore ends in an
+    accepted string, so the work is O(k * L * |symbols|) plus the table.
     """
-    live = dfa.live_states()
-    if dfa.start not in live:
-        return []
-    stand_in = other_char(dfa.alphabet)
     symbols = dfa.symbols() if include_other else sorted(dfa.alphabet)
+    stand_in = other_char(dfa.alphabet)
+    can: list[frozenset[int]] = [dfa.accept]
     found: list[str] = []
-    queue: deque[tuple[int, str]] = deque([(dfa.start, "")])
-    while queue and len(found) < k:
-        q, w = queue.popleft()
-        if q in dfa.accept:
-            found.append(w)
-        if len(w) >= max_len:
-            continue
+
+    def walk(q: int, remaining: int, prefix: list[str]) -> None:
+        """DFS for strings of exactly `remaining` more symbols; stops once k are found."""
+        if len(found) >= k:
+            return
+        if remaining == 0:
+            found.append("".join(prefix))
+            return
         for a in symbols:
             r = dfa.delta[(q, a)]
-            if r in live:
-                queue.append((r, w + (stand_in if a == OTHER else a)))
+            if r in can[remaining - 1]:
+                prefix.append(stand_in if a == OTHER else a)
+                walk(r, remaining - 1, prefix)
+                prefix.pop()
+                if len(found) >= k:
+                    return
+
+    for length in range(max_len + 1):
+        if length:
+            prev = can[-1]
+            can.append(frozenset(q for q in dfa.states if any(dfa.delta[(q, a)] in prev for a in symbols)))
+        if dfa.start in can[length]:
+            walk(dfa.start, length, [])
+            if len(found) >= k:
+                break
     return found

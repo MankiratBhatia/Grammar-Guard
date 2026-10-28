@@ -37,6 +37,7 @@ class Certificate:
     trace: list[Any]
     accepted: bool
     token_ends: list[int] = field(default_factory=list)  # character offset where each token ended
+    names: dict[str, str] = field(default_factory=dict)  # user-defined constraint names the expression uses
 
     def to_dict(self) -> dict[str, Any]:
         """Plain dict for JSON."""
@@ -45,7 +46,7 @@ class Certificate:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Certificate:
         """Inverse of to_dict (ignores unknown keys)."""
-        names = {"kind", "constraint", "fingerprint", "text", "trace", "accepted", "token_ends"}
+        names = {"kind", "constraint", "fingerprint", "text", "trace", "accepted", "token_ends", "names"}
         return cls(**{k: v for k, v in data.items() if k in names})
 
 
