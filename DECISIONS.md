@@ -31,3 +31,24 @@ Ambiguities in the spec and the (simplest) choice taken for each.
    among the shortest ones.
 8. **Repeated postfix operators** such as `a**` or `a{2}*` are accepted and
    nest naturally (Python's `re` rejects them). The tests avoid them.
+
+## Phase 2 — constrained decoding
+
+1. **Exact token text** comes from inverting GPT-2's byte→unicode map and
+   decoding UTF-8 strictly. Tokens that are only a fragment of a multi-byte
+   character, and special tokens, map to `None` and are never allowed (the
+   regex alphabets are plain text). EOS is handled separately.
+2. **EOS is allowed only in accepting states**; a state's `num_allowed`
+   counts EOS when it is legal.
+3. **Dead end** = current state has zero allowed tokens and is not accepting.
+   With GPT-2 this cannot happen for ASCII regexes (every byte is a token),
+   so it is tested with an artificially emptied index.
+4. **Stop reasons** (`eos`, `dead_end`, `max_tokens`) are the generators'
+   return value; `collect()` extracts it. If `max_tokens` is hit, the output
+   is a live prefix, not necessarily a full match — the CLI reports this.
+5. **Empty prompt** is replaced by the EOS token (GPT-2's start-of-text).
+6. **Sampling:** greedy by default; `--top-k K` samples from the K most likely
+   *allowed* tokens (masking happens before top-k), seeded for reproducibility.
+7. **Cache:** `.cache/token_index_<sha256(model + minimal-DFA signature)>.json`.
+   Equivalent regexes share a cache entry because the minimal DFA is unique.
+8. Only live states are indexed; non-live states are never entered.
