@@ -52,3 +52,18 @@ Ambiguities in the spec and the (simplest) choice taken for each.
 7. **Cache:** `.cache/token_index_<sha256(model + minimal-DFA signature)>.json`.
    Equivalent regexes share a cache entry because the minimal DFA is unique.
 8. Only live states are indexed; non-live states are never entered.
+
+## Phase 3 — Streamlit UI
+
+1. **DOT is hand-written** in `core/dot.py` (stdlib only); `st.graphviz_chart`
+   renders it in the browser, so no system Graphviz install is needed.
+2. **The dead state is hidden in drawings** (with every edge into it); the text
+   says missing edges go there. Non-live states are dashed. State counts still
+   include it.
+3. **Parallel edges are merged** into one label, runs compressed (`0-9`).
+4. **Generate tab runs the two generators one after the other**, not in
+   parallel threads: unconstrained streams into the left column, then
+   constrained into the right, with the current DFA state, allowed-token
+   count and a step table updating per token. Simplest thing that works in
+   Streamlit's script model.
+5. **UI is tested headlessly** with Streamlit's `AppTest`.
