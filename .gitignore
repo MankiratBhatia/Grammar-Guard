@@ -10,3 +10,6 @@ frontend/dist/
 .mypy_cache/
 .ruff_cache/
 .testlogs/
+
+# generated report intermediates
+report/_report.html
