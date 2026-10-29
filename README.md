@@ -142,6 +142,8 @@ The full argument, with the trie speed-up, the lazy index, the PDA variant and t
 | `grammarguard/api/`, `frontend/` | FastAPI service and React app |
 | `grammarguard/eval/` | Benchmark harness with confidence intervals |
 
+**New to the subject?** [docs/DEMO.md](docs/DEMO.md) teaches the background in plain words and gives a step-by-step demonstration
+script with exact inputs, expected results and screenshots.
 Design decisions and simplifications are recorded in [DECISIONS.md](DECISIONS.md); likely viva questions with short answers are in
 [docs/VIVA.md](docs/VIVA.md).
 
