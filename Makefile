@@ -3,7 +3,7 @@ PY ?= .venv/bin/python
 .PHONY: install test test-fast lint typecheck api web web-install web-test web-build web-types serve
 
 install:            ## install the package with every extra, editable
-	$(PY) -m pip install -e ".[ml,api,ui,dev]"
+	$(PY) -m pip install -e ".[ml,api,dev]"
 
 test:               ## full suite (loads GPT-2)
 	$(PY) -m pytest -q

@@ -570,6 +570,30 @@
     }
    }
   },
+  "/api/v1/benchmarks": {
+   "get": {
+    "tags": [
+     "benchmarks"
+    ],
+    "summary": "Evaluation results: validity, cost and speed of constrained vs unconstrained decoding",
+    "description": "The full results document (`meta`, `cases`, `runs`, `summary`) from the last benchmark run.\nEvery run, including the generated text, is included so the numbers can be audited.",
+    "operationId": "benchmarks_api_v1_benchmarks_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "type": "object",
+         "title": "Response Benchmarks Api V1 Benchmarks Get"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/v1/system/health": {
    "get": {
     "tags": [

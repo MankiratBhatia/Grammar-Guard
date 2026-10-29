@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from grammarguard.api import __version__
 from grammarguard.api.errors import install_error_handlers
-from grammarguard.api.routers import algebra, automata, generate, learn, system, validators
+from grammarguard.api.routers import algebra, automata, benchmarks, generate, learn, system, validators
 from grammarguard.api.services.compiler import CompileService
 from grammarguard.api.settings import Settings
 from grammarguard.decoding.engine import Engine, get_engine
@@ -84,7 +84,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     install_error_handlers(app)
 
     api = APIRouter(prefix="/api/v1")
-    for module in (automata, algebra, validators, learn, generate, system):
+    for module in (automata, algebra, validators, learn, generate, benchmarks, system):
         api.include_router(module.router)
     app.include_router(api)
 

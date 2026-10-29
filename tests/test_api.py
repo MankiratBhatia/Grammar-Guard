@@ -78,6 +78,7 @@ def test_openapi_lists_every_endpoint(client):
         "generate",
         "generate/json",
         "generate/batch",
+        "benchmarks",
         "system/health",
         "system/models",
     }
@@ -557,3 +558,23 @@ def test_built_frontend_is_served_without_shadowing_the_api(tmp_path):
         assert c.get(API + "/system/health").json()["status"] == "ok"
         assert c.get("/docs").status_code == 200 and c.get("/openapi.json").status_code == 200
         assert c.post(API + "/compile", json={"regex": "ab"}).status_code == 200
+
+
+# ---------------------------------------------------------------- benchmarks
+
+
+def test_benchmarks_endpoint_serves_results_or_explains(tmp_path):
+    """200 with the stored document when present; a 404 with the standard envelope and a how-to when absent."""
+    missing = Settings(warm_start=False, frontend_dir="/nonexistent", benchmarks_path=tmp_path / "nope.json")
+    with TestClient(create_app(missing, FakeEngine())) as c:
+        e = error_of(c.get(API + "/benchmarks"), 404)
+        assert e["code"] == "not_found" and "python -m grammarguard.eval" in e["message"]
+    doc = {"meta": {"model": "gpt2"}, "cases": [], "runs": [], "summary": {"overall": {}}}
+    (tmp_path / "r.json").write_text(json.dumps(doc))
+    present = Settings(warm_start=False, frontend_dir="/nonexistent", benchmarks_path=tmp_path / "r.json")
+    with TestClient(create_app(present, FakeEngine())) as c:
+        assert c.get(API + "/benchmarks").json() == doc
+    (tmp_path / "bad.json").write_text("{not json")
+    broken = Settings(warm_start=False, frontend_dir="/nonexistent", benchmarks_path=tmp_path / "bad.json")
+    with TestClient(create_app(broken, FakeEngine())) as c:
+        assert error_of(c.get(API + "/benchmarks"), 500)["code"] == "internal"

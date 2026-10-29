@@ -1,5 +1,6 @@
 import type {
   AlgebraResponse,
+  BenchResults,
   BatchResponse,
   Certificate,
   CertificateVerifyResponse,
@@ -63,6 +64,7 @@ const post = <T>(path: string, body: unknown, signal?: AbortSignal) => request<T
 
 export const api = {
   health: () => request<HealthResponse>("GET", "/system/health"),
+  benchmarks: () => request<BenchResults>("GET", "/benchmarks"),
   builtins: () => request<{ builtins: Record<string, string> }>("GET", "/builtins"),
   compile: (regex: string) => post<CompileResponse>("/compile", { regex }),
   membership: (constraint: Constraint, text: string) => post<MembershipResponse>("/membership", { constraint, text }),

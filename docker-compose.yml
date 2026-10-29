@@ -1,0 +1,16 @@
+services:
+  grammarguard:
+    build: .
+    image: grammarguard:2.0
+    ports:
+      - "8000:8000"
+    environment:
+      GRAMMARGUARD_WARM_START: "true"        # load GPT-2 in the background at start-up
+      GRAMMARGUARD_GENERATION_TIMEOUT: "120" # seconds before a generation is stopped
+    volumes:
+      - gg-cache:/cache                      # token indexes survive restarts
+    restart: unless-stopped
+    mem_limit: 3g
+
+volumes:
+  gg-cache: {}

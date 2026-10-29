@@ -22,7 +22,7 @@ vi.mock("../api/client", async (orig) => {
   return {
     ...actual,
     api: {
-      health: fn(), builtins: fn(), compile: fn(), membership: fn(), verify: fn(), algebra: fn(), equivalence: fn(),
+      health: fn(), benchmarks: fn(), builtins: fn(), compile: fn(), membership: fn(), verify: fn(), algebra: fn(), equivalence: fn(),
       count: fn(), diff: fn(), testgen: fn(), learnSubset: fn(), learnMinimize: fn(), batch: fn(),
     },
   };
@@ -297,5 +297,61 @@ describe("App shell", () => {
     const { default: App } = await import("../App");
     render(<App />);
     expect(await screen.findByText("Server offline")).toBeInTheDocument();
+  });
+});
+
+describe("Benchmarks page", () => {
+  const rate = (k: number, n: number, lo: number, hi: number) => ({ k, n, rate: k / n, lo, hi });
+  const mode = (validity: ReturnType<typeof rate>, extra: object = {}) => ({
+    validity, mean_tokens: 10, mean_seconds: 1, mean_tokens_per_second: 10, ...extra,
+  });
+  const group = {
+    unconstrained: mode(rate(0, 40, 0, 0.09), { prefix_validity: rate(5, 40, 0.05, 0.26) }),
+    retry5: mode(rate(2, 20, 0.03, 0.3), { prefix_validity: rate(8, 20, 0.22, 0.61), mean_attempts: 4.5 }),
+    constrained: mode(rate(40, 40, 0.91, 1), { mean_cost_bits: 12.3, mean_pressure: 0.4, mean_overrides: 2 }),
+    slowdown: 1.3,
+  };
+  const results = {
+    meta: { date: "2026-10-28T00:00:00+00:00", model: "gpt2", torch: "2", python: "3.11", platform: "x", cpus: 4, commit: "abc1234", max_tokens: 30, retries: 5, wall_seconds: 480 },
+    cases: [{ id: "iso_date", category: "dates", kind: "regex", text: "[0-9]{4}", dfa_states: 12, live_states: 11, index_build_ms: 3 }],
+    runs: [
+      { case: "iso_date", prompt: 0, sampling: "greedy", seed: 0, mode: "unconstrained", valid: false, valid_prefix: false, stop_reason: "max_tokens", tokens: 30, seconds: 1, text: "January 1, 2014", oracle_agrees: true },
+      { case: "iso_date", prompt: 0, sampling: "greedy", seed: 0, mode: "constrained", valid: true, valid_prefix: true, stop_reason: "eos", tokens: 5, seconds: 0.3, text: "2019-01-01", oracle_agrees: true },
+    ],
+    summary: { overall: group, by_category: { dates: group }, by_case: { iso_date: group }, by_sampling: { greedy: group } },
+  };
+
+  it("shows both baselines as-is and with prefix extraction next to the constrained result, with intervals", async () => {
+    api.benchmarks.mockResolvedValue(results);
+    const { default: Bench } = await import("../pages/Benchmarks");
+    render(<Bench />);
+    expect(await screen.findByRole("img", { name: /GrammarGuard: 100% valid \(95% interval 91% to 100%\)/ })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /Unconstrained GPT-2, as is: 0% valid/ })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /Unconstrained \+ extract a valid prefix: 13% valid/ })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /Best-of-5 retries \+ extract a valid prefix: 40% valid/ })).toBeInTheDocument();
+    expect(screen.getByText("1.30×")).toBeInTheDocument();
+    expect(screen.getByText("12.3 bits")).toBeInTheDocument();
+    expect(screen.getByText("agree")).toBeInTheDocument(); // our DFA vs Python re
+    expect(screen.getByText(/1 of\s*1 runs hit the token limit/)).toBeInTheDocument();
+  });
+
+  it("lets you audit the raw outputs per validator and method", async () => {
+    api.benchmarks.mockResolvedValue(results);
+    const { default: Bench } = await import("../pages/Benchmarks");
+    render(<Bench />);
+    expect(await screen.findByText("January 1, 2014")).toBeInTheDocument();
+    expect(screen.getByText("2019-01-01")).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Method"), "constrained");
+    expect(screen.queryByText("January 1, 2014")).not.toBeInTheDocument();
+    expect(screen.getByText("2019-01-01")).toBeInTheDocument();
+  });
+
+  it("explains how to produce results when there are none", async () => {
+    api.benchmarks.mockRejectedValue(new ApiError("No benchmark results yet. Generate them with: python -m grammarguard.eval", "not_found", 404));
+    const { default: Bench } = await import("../pages/Benchmarks");
+    render(<Bench />);
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("not_found");
+    expect(alert).toHaveTextContent("python -m grammarguard.eval");
   });
 });

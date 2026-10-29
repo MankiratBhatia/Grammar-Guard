@@ -81,3 +81,82 @@ export interface ServerError {
   message: string;
   position?: number | null;
 }
+
+// ---- benchmark results (GET /benchmarks); the document is produced by `python -m grammarguard.eval` ----
+
+export interface Rate {
+  k: number;
+  n: number;
+  rate: number;
+  lo: number;
+  hi: number;
+}
+
+export interface ModeSummary {
+  validity: Rate;
+  prefix_validity?: Rate;
+  mean_tokens: number | null;
+  mean_seconds: number | null;
+  mean_tokens_per_second: number | null;
+  mean_attempts?: number | null;
+  mean_pressure?: number | null;
+  mean_cost_bits?: number | null;
+  mean_overrides?: number | null;
+}
+
+export interface GroupSummary {
+  unconstrained?: ModeSummary;
+  retry5?: ModeSummary;
+  constrained?: ModeSummary;
+  slowdown?: number;
+}
+
+export interface BenchRun {
+  case: string;
+  prompt: number;
+  sampling: string;
+  seed: number;
+  mode: "unconstrained" | "retry5" | "constrained";
+  valid: boolean;
+  valid_prefix: boolean;
+  stop_reason: string;
+  tokens: number;
+  seconds: number;
+  text: string;
+  oracle_agrees: boolean | null;
+  attempts?: number;
+  total_cost_bits?: number | null;
+}
+
+export interface BenchCase {
+  id: string;
+  category: string;
+  kind: string;
+  text: string;
+  dfa_states: number;
+  live_states: number;
+  index_build_ms: number;
+}
+
+export interface BenchResults {
+  meta: {
+    date: string;
+    model: string;
+    torch: string;
+    python: string;
+    platform: string;
+    cpus: number | null;
+    commit: string | null;
+    max_tokens: number;
+    retries: number;
+    wall_seconds: number;
+  };
+  cases: BenchCase[];
+  runs: BenchRun[];
+  summary: {
+    overall: GroupSummary;
+    by_category: Record<string, GroupSummary>;
+    by_case: Record<string, GroupSummary>;
+    by_sampling: Record<string, GroupSummary>;
+  };
+}

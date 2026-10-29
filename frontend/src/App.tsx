@@ -10,6 +10,7 @@ const pages: { id: string; label: string; hint: string; icon: string; Page: Reac
   { id: "algebra", label: "Constraint Algebra", hint: "Combine rules with ∩ ∪ − ¬", icon: "∪", Page: lazy(() => import("./pages/Algebra")) },
   { id: "validators", label: "Validator Lab", hint: "Diff validators, synthesize tests", icon: "⚖", Page: lazy(() => import("./pages/ValidatorLab")) },
   { id: "json", label: "JSON & Schema", hint: "Pushdown automaton with a stack", icon: "{ }", Page: lazy(() => import("./pages/JsonSchema")) },
+  { id: "benchmarks", label: "Benchmarks", hint: "Measured results: validity, cost and speed", icon: "▤", Page: lazy(() => import("./pages/Benchmarks")) },
   { id: "learn", label: "Learn", hint: "Step through the algorithms", icon: "▶", Page: lazy(() => import("./pages/Learn")) },
 ];
 

@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     warm_start: bool = True  # load the model in the background when the server starts
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
     frontend_dir: Path = REPO_ROOT / "frontend" / "dist"
+    benchmarks_path: Path = REPO_ROOT / "eval" / "results" / "latest.json"
 
     # input limits (violations are a 422 with code "limit_exceeded")
     max_regex_len: int = 500

@@ -256,3 +256,25 @@ Ambiguities in the spec and the (simplest) choice taken for each.
    including error paths, stream events, the PDA stack view and the step players).
 10. **Not done:** the Playwright suite from the plan (browsers cannot be installed without sudo here). The
     real-browser checks above were manual screenshots, not an automated end-to-end test.
+
+## 2.0 Phase F — evaluation, packaging, documentation
+
+1. **Streamlit prototype retired** (`app.py` and its tests removed, `ui` extra dropped) once the React app reached parity. The two
+   DOT-generation tests that were not Streamlit-specific moved to `tests/test_dot.py`.
+2. **Benchmark design (`grammarguard/eval/`)**: 18 validators in six categories (dates, phones, ids, emails, numbers, policies), each
+   with a bare prompt and a few-shot prompt, run greedy and sampled (top-20, two seeds). Three methods are compared: plain GPT-2,
+   **best-of-5 rejection sampling** (the usual workaround), and the constrained decoder. The unconstrained baseline is judged just as
+   strictly (the *whole* output must match, because a validator rejects text that merely starts correctly); a second figure reports
+   whether any valid *prefix* exists, which is what regex post-processing could rescue. This avoids comparing against a strawman.
+3. **Statistics**: 95% Wilson intervals (valid near 0% and 100%, where the usual normal approximation fails). The endpoints are made exact at
+   0/n and n/n (floating-point fuzz gave 0.99999999 for 100/100, which a test caught).
+4. **Independent judge**: every regex output is also checked with Python's `re.fullmatch`; the benchmark records whether it agrees with
+   our DFA (it must, and the Benchmarks page shows it).
+5. **Timing** is wall-clock on CPU with the server stopped (so it is not competing for cores) and excludes the one-off token-index
+   build, which is reported separately per validator. Results, including every generated text, are stored in
+   `eval/results/latest.json` and served at `GET /api/v1/benchmarks`; the Benchmarks page renders them with a run explorer.
+6. **Docker**: multi-stage (Node builds the frontend; Python 3.11-slim with CPU-only torch runs it), GPT-2 baked into the image so it starts
+   offline, unprivileged user, health check, volume for the token-index cache. **Not built or run** in the development environment
+   (Docker is not installed there): the Dockerfile and compose file were written, the compose file parses and every `COPY` source exists.
+7. **Documentation**: README (quick start, results, syllabus mapping), `docs/THEORY.md` (every algorithm with its guarantee and
+   complexity), `docs/API.md` (reference with examples, verified against a running server), `docs/VIVA.md` (35 likely questions).

@@ -1,6 +1,7 @@
 # GrammarGuard 2.0 — Implementation Plan
 
-Status: **proposal, awaiting approval**. Nothing below is built yet.
+Status: **implemented** (kept as the original plan; the Streamlit prototype mentioned below has been replaced by the React frontend).
+What was actually built, and every deviation from this plan with its reason, is recorded in `DECISIONS.md`; the Playwright suite and the Docker build verification are the two items that were not done.
 The current project (phases 1–4, 174 tests, Streamlit UI) stays the foundation;
 every new feature is either a new automata algorithm or a product feature built
 directly on one, so all of it stays explainable in a ToC viva.
